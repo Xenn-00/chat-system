@@ -1,0 +1,106 @@
+services:
+  chat_db:
+    image: postgres:latest
+    container_name: chat_db
+    restart: "no"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    networks:
+      - chat_network
+    volumes:
+      - chat_dbdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+  chat_db_pooling:
+    image: edoburu/pgbouncer:latest
+    container_name: chat_db_pooling
+    restart: "no"
+    networks:
+      - chat_network
+    depends_on:
+      chat_db:
+        condition: service_healthy
+    environment:
+      DB_USER: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_HOST: chat_db
+    volumes:
+      - ./pgbouncer.ini:/etc/pgbouncer/pgbouncer.ini
+      - ./userlist.txt:/etc/pgbouncer/userlist.txt
+    ports:
+      - "6432:6432"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "pg_isready",
+          "-U",
+          "${POSTGRES_USER}",
+          "-h",
+          "127.0.0.1",
+          "-p",
+          "6432",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+  chat_redis:
+    image: redis:latest
+    container_name: chat_redis
+    restart: "no"
+    command: redis-server --requirepass ${REDIS_PASSWORD}
+    ports:
+      - "6379:6379"
+    networks:
+      - chat_network
+    volumes:
+      - chat_redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+  chat_mongo:
+    image: mongo:latest
+    container_name: chat_mongo
+    restart: "no"
+    ports:
+      - "27017:27017"
+    volumes:
+      - chat_mongodata:/data/db
+    networks:
+      - chat_network
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD}
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "mongosh",
+          "--username",
+          "${MONGO_INITDB_ROOT_USERNAME}",
+          "--password",
+          "${MONGO_INITDB_ROOT_PASSWORD}",
+          "--authenticationDatabase=admin",
+          "--eval",
+          "db.adminCommand('ping')",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  chat_network:
+
+volumes:
+  chat_dbdata:
+  chat_redisdata:
+  chat_mongodata:

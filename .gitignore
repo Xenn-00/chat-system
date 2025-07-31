@@ -1,0 +1,6 @@
+.env
+*.ini
+userlist.txt
+application.yaml
+*.log
+*.pem
