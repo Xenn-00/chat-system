@@ -13,6 +13,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/xenn00/chat-system/config"
 	"github.com/xenn00/chat-system/internal/routers"
+	"github.com/xenn00/chat-system/internal/websocket"
 	"github.com/xenn00/chat-system/internal/worker"
 	"github.com/xenn00/chat-system/state"
 )
@@ -42,7 +43,8 @@ func main() {
 		Handler: r,
 	}
 
-	workerPool := worker.NewWorkerPool(state.Redis, 5)
+	wsHub := websocket.NewHub()
+	workerPool := worker.NewWorkerPool(state.Redis, 5, wsHub)
 
 	go workerPool.Start(ctx)
 	go workerPool.StartDLQWorker(ctx)

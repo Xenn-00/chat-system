@@ -17,7 +17,7 @@ type createUserOTPPayload struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
-func HandlerCreateUserOTP(ctx context.Context, redis *redis.Client, raw json.RawMessage) error {
+func (wh *WorkerHandler) HandlerCreateUserOTP(ctx context.Context, redis *redis.Client, raw json.RawMessage) error {
 	var payload createUserOTPPayload
 
 	if err := json.Unmarshal(raw, &payload); err != nil {

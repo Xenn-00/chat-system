@@ -13,7 +13,7 @@ import (
 	"github.com/xenn00/chat-system/internal/middleware"
 	"github.com/xenn00/chat-system/internal/queue"
 	chat_service "github.com/xenn00/chat-system/internal/use-case/chat-case"
-	"github.com/xenn00/chat-system/internal/websocket"
+	"github.com/xenn00/chat-system/internal/utils/types"
 	"github.com/xenn00/chat-system/state"
 )
 
@@ -24,12 +24,12 @@ type ChatHandler struct {
 	Service  chat_service.ChatServiceContract
 }
 
-func NewChatHandler(state *state.AppState, ws *websocket.Hub) *ChatHandler {
+func NewChatHandler(state *state.AppState) *ChatHandler {
 	return &ChatHandler{
 		State:    state,
 		Producer: queue.NewProducer(state.Redis),
 		Validate: validator.New(),
-		Service:  chat_service.NewChatService(state, ws),
+		Service:  chat_service.NewChatService(state),
 	}
 }
 
@@ -65,13 +65,13 @@ func (h *ChatHandler) SendPrivateMessage(w http.ResponseWriter, r *http.Request)
 
 	// notif / ws broadcast
 	go func() {
-		jobPayload := map[string]any{
-			"room_id":     resp.RoomID,
-			"message_id":  resp.MessageID,
-			"sender_id":   resp.SenderID,
-			"receiver_id": req.ReceiverID,
-			"content":     resp.Content,
-			"created_at":  resp.CreatedAt,
+		jobPayload := &types.BroadcastPayload{
+			RoomID:     resp.RoomID,
+			MessageID:  resp.MessageID,
+			SenderID:   resp.SenderID,
+			ReceiverID: req.ReceiverID,
+			Content:    resp.Content,
+			CreatedAt:  resp.CreatedAt,
 		}
 
 		job := queue.Job{

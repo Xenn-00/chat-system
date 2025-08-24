@@ -13,5 +13,6 @@ func NewRouter(state *state.AppState) http.Handler {
 	r.Use(middleware.WithRequestId)
 	r.Use(middleware.GetDeviceFingerprint)
 	UserRouter(r, state)
+	ChatRouter(r, state)
 	return r
 }

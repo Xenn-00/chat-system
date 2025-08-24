@@ -10,6 +10,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog/log"
 	"github.com/xenn00/chat-system/internal/queue"
+	"github.com/xenn00/chat-system/internal/websocket"
 )
 
 type WorkerPool struct {
@@ -17,13 +18,15 @@ type WorkerPool struct {
 	WorkerNum  int
 	JobChannel chan string
 	wg         sync.WaitGroup
+	ws         *websocket.Hub
 }
 
-func NewWorkerPool(redis *redis.Client, workerNum int) *WorkerPool {
+func NewWorkerPool(redis *redis.Client, workerNum int, ws *websocket.Hub) *WorkerPool {
 	return &WorkerPool{
 		Redis:      redis,
 		WorkerNum:  workerNum,
 		JobChannel: make(chan string, 100), // Buffered channel to hold jobs
+		ws:         ws,
 	}
 }
 
@@ -90,7 +93,7 @@ func (wp *WorkerPool) worker(ctx context.Context, id int) {
 				log.Warn().Err(err).Msgf("Worker %d: Failed to unmarshal job payload", id)
 				continue
 			}
-			if err := HandleJob(ctx, job, wp.Redis); err != nil {
+			if err := HandleJob(ctx, job, wp.Redis, wp.ws); err != nil {
 				job.Retry++
 				job.ErrorMsg = err.Error()
 

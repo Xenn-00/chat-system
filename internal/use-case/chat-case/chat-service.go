@@ -4,26 +4,24 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"time"
 
 	"github.com/xenn00/chat-system/internal/dtos/chat_dto"
 	app_error "github.com/xenn00/chat-system/internal/errors"
 	chat_repo "github.com/xenn00/chat-system/internal/repo/chat"
-	"github.com/xenn00/chat-system/internal/websocket"
 	"github.com/xenn00/chat-system/state"
 )
 
 type ChatService struct {
 	AppState *state.AppState
 	ChatRepo chat_repo.ChatRepoContract
-	WS       *websocket.Hub
+	// WS       *websocket.Hub
 }
 
-func NewChatService(appState *state.AppState, ws *websocket.Hub) ChatServiceContract {
+func NewChatService(appState *state.AppState) ChatServiceContract {
 	return &ChatService{
 		AppState: appState,
 		ChatRepo: chat_repo.NewChatRepo(appState),
-		WS:       ws,
+		// WS:       ws,
 	}
 }
 
@@ -46,13 +44,13 @@ func (c *ChatService) SendPrivateMessage(ctx context.Context, req chat_dto.SendP
 		return nil, app_error.NewAppError(http.StatusInternalServerError, fmt.Sprintf("failed to update metadata message: %v", err), "update-room-meta")
 	}
 
-	c.WS.BroadcastToRoom(room.ID.String(), websocket.Message{
-		Type:      "chat_message",
-		RoomId:    room.ID.String(),
-		SenderID:  senderID,
-		Content:   req.Content,
-		Timestamp: time.Now().Unix(),
-	})
+	// c.WS.BroadcastToRoom(room.ID.String(), websocket.Message{
+	// 	Type:      "chat_message",
+	// 	RoomId:    room.ID.String(),
+	// 	SenderID:  senderID,
+	// 	Content:   req.Content,
+	// 	Timestamp: time.Now().Unix(),
+	// })
 
 	return &chat_dto.SendPrivateMessageResponse{
 		MessageID: msgId.String(),
