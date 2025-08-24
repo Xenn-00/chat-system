@@ -56,21 +56,21 @@ func (r *UserRepo) SaveUser(ctx context.Context, model entity.User) *app_error.A
 	return nil
 }
 
-func (r *UserRepo) VerifyUser(ctx context.Context, userId string) (bool, *app_error.AppError) {
+func (r *UserRepo) VerifyUser(ctx context.Context, userId string) (*entity.User, *app_error.AppError) {
 	var user entity.User
 
 	if err := r.AppState.DB.WithContext(ctx).Where("id = ?", userId).First(&user).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return false, app_error.NewAppError(http.StatusNotFound, "cannot find user", "user-id")
+			return nil, app_error.NewAppError(http.StatusNotFound, "cannot find user", "user-id")
 		}
-		return false, app_error.NewAppError(http.StatusInternalServerError, "unexpected error occur when fetch user", "db-error")
+		return nil, app_error.NewAppError(http.StatusInternalServerError, "unexpected error occur when fetch user", "db-error")
 	}
 
 	user.IsActive = true
 
 	if err := r.AppState.DB.WithContext(ctx).Where("id = ?", userId).Updates(user).Error; err != nil {
-		return false, app_error.NewAppError(http.StatusInternalServerError, "unexpected error occured when verifying user", "db-update")
+		return nil, app_error.NewAppError(http.StatusInternalServerError, "unexpected error occured when verifying user", "db-update")
 	}
 
-	return user.IsActive, nil
+	return &user, nil
 }

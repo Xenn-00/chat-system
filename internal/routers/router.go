@@ -11,6 +11,7 @@ import (
 func NewRouter(state *state.AppState) http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.WithRequestId)
+	r.Use(middleware.GetDeviceFingerprint)
 	UserRouter(r, state)
 	return r
 }

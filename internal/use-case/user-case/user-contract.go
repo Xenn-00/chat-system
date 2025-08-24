@@ -9,5 +9,5 @@ import (
 
 type UserServiceContract interface {
 	Register(ctx context.Context, req user_dto.CreateUserRequest) (*user_dto.UserResponse, *app_error.AppError)
-	VerifyRegister(ctx context.Context, req user_dto.VerifyUserRequest, userId string) (bool, *app_error.AppError)
+	VerifyRegister(ctx context.Context, req user_dto.VerifyUserRequest, fingerprint string, userId string) (*user_dto.UserResponse, *app_error.AppError)
 }

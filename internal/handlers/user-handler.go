@@ -93,6 +93,12 @@ func (h *UserHandler) VerifyUser(w http.ResponseWriter, r *http.Request) *app_er
 
 	log.Info().Msgf("user_id: %s", user_id)
 
+	// get fingerprint
+	fp := r.Context().Value(middleware.FingerprintKey).(string)
+	if fp == "" {
+		return app_error.NewAppError(http.StatusBadRequest, "Missing device fingerprint", "fingerprint")
+	}
+
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		return app_error.NewAppError(http.StatusBadRequest, "Invalid JSON", "body")
 	}
@@ -101,9 +107,13 @@ func (h *UserHandler) VerifyUser(w http.ResponseWriter, r *http.Request) *app_er
 		return app_error.NewAppError(http.StatusBadRequest, fmt.Sprintf("Invalid fields: %v", err), "validation")
 	}
 
-	verified, err := h.Service.VerifyRegister(r.Context(), req, user_id)
+	resp, err := h.Service.VerifyRegister(r.Context(), req, fp, user_id)
 	if err != nil {
 		return err
+	}
+
+	if resp.Refresh == nil {
+		return app_error.NewAppError(http.StatusInternalServerError, "failed to prepare refresh token", "server")
 	}
 
 	reqID, ok := r.Context().Value(middleware.RequestIdKey).(string)
@@ -111,8 +121,18 @@ func (h *UserHandler) VerifyUser(w http.ResponseWriter, r *http.Request) *app_er
 		reqID = "unknown"
 	}
 
+	http.SetCookie(w, &http.Cookie{
+		Name:     "refresh_token",
+		Value:    *resp.Refresh,
+		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteStrictMode,
+		Path:     "/",
+		Expires:  time.Now().Add(7 * 24 * time.Hour),
+	})
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(CreateResponse("user registered successfully", verified, reqID))
+	json.NewEncoder(w).Encode(CreateResponse("user registered successfully", *resp, reqID))
 
 	return nil
 }

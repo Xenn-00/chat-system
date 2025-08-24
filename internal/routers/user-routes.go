@@ -3,6 +3,7 @@ package routers
 import (
 	"github.com/go-chi/chi/v5"
 	"github.com/xenn00/chat-system/internal/handlers"
+	"github.com/xenn00/chat-system/internal/middleware"
 	"github.com/xenn00/chat-system/state"
 )
 
@@ -11,4 +12,8 @@ func UserRouter(r chi.Router, state *state.AppState) {
 
 	r.Post("/api/v1/users", handlers.WrapHandler(userHandler.CreateUser))
 	r.Post("/api/v1/users/{userId}", handlers.WrapHandler(userHandler.VerifyUser))
+
+	r.Group(func(protected chi.Router) {
+		protected.Use(middleware.JWTAuthWithAutoRefresh(state.JwtSecret.Private, state.JwtSecret.Public, state.Redis))
+	})
 }
