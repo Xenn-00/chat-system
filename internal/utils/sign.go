@@ -55,7 +55,7 @@ func IssueNewTokens(userId, username string, privateKey *rsa.PrivateKey) (string
 }
 
 func GenerateSign(claims *Claims, privateKey *rsa.PrivateKey) (string, error) {
-	token := jwt.NewWithClaims(jwt.SigningMethodES256, jwt.MapClaims{
+	token := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
 		"sub":      claims.Sub,
 		"username": claims.Username,
 		"jti":      &claims.Jti,

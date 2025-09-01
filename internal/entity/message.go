@@ -7,10 +7,26 @@ import (
 )
 
 type Message struct {
-	ID       primitive.ObjectID `bson:"_id,omitempty"`
-	RoomID   string             `bson:"roomId"`
-	SenderID string             `bson:"senderId"`
-	Content  string             `bson:"content"`
-	IsRead   bool               `bson:"isRead"`
-	CreateAt time.Time          `bson:"createdAt"`
+	ID          primitive.ObjectID `bson:"_id,omitempty"`
+	RoomID      string             `bson:"room_id"`
+	SenderID    string             `bson:"sender_id"`
+	ReceiverID  string             `bson:"receiver_id"`
+	Content     string             `bson:"content"`
+	IsRead      bool               `bson:"is_read"`
+	IsEdited    bool               `bson:"is_edited"`
+	Attachments []*Attachment      `bson:"attachments,omitempty"`
+	ReplyTo     *ReplyTo           `bson:"reply_to,omitempty"`
+	CreatedAt   time.Time          `bson:"created_at"`
+	UpdatedAt   *time.Time         `bson:"updated_at,omitempty"`
+}
+
+type ReplyTo struct {
+	MessageID primitive.ObjectID `bson:"message_id"`
+	Content   string             `bson:"content"`
+	SenderID  string             `bson:"sender_id"`
+}
+
+type Attachment struct {
+	Type string `bson:"type"`
+	URL  string `bson:"url"`
 }

@@ -74,3 +74,16 @@ func (r *UserRepo) VerifyUser(ctx context.Context, userId string) (*entity.User,
 
 	return &user, nil
 }
+
+func (r *UserRepo) FindUserByCredential(ctx context.Context, username string) (*entity.User, *app_error.AppError) {
+	var user entity.User
+
+	if err := r.AppState.DB.WithContext(ctx).Where("username = ?", username).First(&user).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, app_error.NewAppError(http.StatusNotFound, "cannot find user", "user-credential")
+		}
+		return nil, app_error.NewAppError(http.StatusInternalServerError, "unexpected error occur when fetch user", "db-error")
+	}
+
+	return &user, nil
+}

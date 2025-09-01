@@ -112,7 +112,7 @@ func (h *UserHandler) VerifyUser(w http.ResponseWriter, r *http.Request) *app_er
 		return err
 	}
 
-	if resp.Refresh == nil {
+	if len(resp.Refresh) == 0 {
 		return app_error.NewAppError(http.StatusInternalServerError, "failed to prepare refresh token", "server")
 	}
 
@@ -123,7 +123,55 @@ func (h *UserHandler) VerifyUser(w http.ResponseWriter, r *http.Request) *app_er
 
 	http.SetCookie(w, &http.Cookie{
 		Name:     "refresh_token",
-		Value:    *resp.Refresh,
+		Value:    resp.Refresh,
+		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteStrictMode,
+		Path:     "/",
+		Expires:  time.Now().Add(7 * 24 * time.Hour),
+	})
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(CreateResponse("user registered successfully", *resp, reqID))
+
+	return nil
+}
+
+func (h *UserHandler) LoginUser(w http.ResponseWriter, r *http.Request) *app_error.AppError {
+	var req user_dto.LoginUserRequest
+	defer r.Body.Close()
+
+	// get fingerprint
+	fp := r.Context().Value(middleware.FingerprintKey).(string)
+	if fp == "" {
+		return app_error.NewAppError(http.StatusBadRequest, "Missing device fingerprint", "fingerprint")
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		return app_error.NewAppError(http.StatusBadRequest, "Invalid JSON", "body")
+	}
+
+	if err := h.Validate.Struct(req); err != nil {
+		return app_error.NewAppError(http.StatusBadRequest, fmt.Sprintf("Invalid fields: %v", err), "validation")
+	}
+
+	resp, err := h.Service.Login(r.Context(), req, fp)
+	if err != nil {
+		return err
+	}
+
+	if len(resp.Refresh) == 0 {
+		return app_error.NewAppError(http.StatusInternalServerError, "failed to prepare refresh token", "server")
+	}
+
+	reqID, ok := r.Context().Value(middleware.RequestIdKey).(string)
+	if !ok {
+		reqID = "unknown"
+	}
+
+	http.SetCookie(w, &http.Cookie{
+		Name:     "refresh_token",
+		Value:    resp.Refresh,
 		HttpOnly: true,
 		Secure:   true,
 		SameSite: http.SameSiteStrictMode,

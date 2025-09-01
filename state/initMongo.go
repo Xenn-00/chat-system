@@ -55,7 +55,7 @@ func initMessageCollection(ctx context.Context, db *mongo.Database) error {
 		// create collection with optional JSON schema validator
 		jsonSchema := bson.M{
 			"bsonType": "object",
-			"required": []string{"room_id", "sender_id", "content", "created_at"},
+			"required": []string{"room_id", "sender_id", "receiver_id", "content", "is_read", "created_at"},
 			"properties": bson.M{
 				"room_id": bson.M{
 					"bsonType":    "string",
@@ -65,13 +65,64 @@ func initMessageCollection(ctx context.Context, db *mongo.Database) error {
 					"bsonType":    "string",
 					"description": "ID sender user",
 				},
+				"receiver_id": bson.M{
+					"bsonType":    "string",
+					"description": "ID receiver user",
+				},
 				"content": bson.M{
 					"bsonType":    "string",
 					"description": "Chat's content",
 				},
+				"is_read": bson.M{
+					"bsonType":    "bool",
+					"description": "Is message already read",
+				},
+				"reply_to": bson.M{
+					"bsonType": []string{"object", "null"},
+					"required": []string{"message_id", "content", "sender_id"},
+					"properties": bson.M{
+						"message_id": bson.M{
+							"bsonType":    "objectId",
+							"description": "ID of the replied message",
+						},
+						"content": bson.M{
+							"bsonType":    "string",
+							"description": "Content of the replied message",
+						},
+						"sender_id": bson.M{
+							"bsonType":    "string",
+							"description": "Sender of the original message",
+						},
+					},
+				},
+				"attachments": bson.M{
+					"bsonType": []string{"array", "null"},
+					"items": bson.M{
+						"bsonType": "object",
+						"required": []string{"url", "type"},
+						"properties": bson.M{
+							"type": bson.M{
+								"bsonType":    "string",
+								"description": "File type, e.g., image, video, docs, etc.",
+							},
+							"url": bson.M{
+								"bsonType":    "string",
+								"description": "File storage URL",
+							},
+						},
+					},
+				},
+				"is_edited": bson.M{
+					"bsonType":    []string{"bool", "null"},
+					"description": "Whether the message has been edited",
+				},
 				"created_at": bson.M{
 					"bsonType":    "date",
-					"description": "Date send",
+					"description": "Message creation timestamp",
+				},
+				"updated_at": bson.M{
+					"bsonType":    []string{"date", "null"},
+					"description": "Message last update timestamp",
 				},
 			},
 		}
@@ -95,6 +146,10 @@ func initMessageCollection(ctx context.Context, db *mongo.Database) error {
 			{
 				Keys:    bson.D{{Key: "sender_id", Value: 1}},
 				Options: options.Index().SetName("sender_idx"),
+			},
+			{
+				Keys:    bson.D{{Key: "receiver_id", Value: 1}},
+				Options: options.Index().SetName("receiver_idx"),
 			},
 		})
 		if err != nil {

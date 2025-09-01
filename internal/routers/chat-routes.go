@@ -12,5 +12,6 @@ func ChatRouter(r chi.Router, state *state.AppState) {
 	r.Group(func(protected chi.Router) {
 		protected.Use(middleware.JWTAuthWithAutoRefresh(state.JwtSecret.Private, state.JwtSecret.Public, state.Redis))
 		protected.Post("/api/v1/chat/{receiverId}/messages", handlers.WrapHandler(chatHandler.SendPrivateMessage))
+		protected.Get("/api/v1/chat/{roomId}/messages", handlers.WrapHandler(chatHandler.GetPrivateMessages))
 	})
 }

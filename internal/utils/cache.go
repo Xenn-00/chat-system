@@ -3,6 +3,7 @@ package utils
 import (
 	"context"
 	"encoding/json"
+	"log"
 	"net/http"
 	"time"
 
@@ -18,11 +19,12 @@ func GetCacheData[T any](ctx context.Context, rdb *redis.Client, cacheKey string
 		return nil, app_error.NewAppError(http.StatusInternalServerError, "unexpected error occur when trying to get from redis", "redis")
 	}
 
+	log.Println("cache hit:", val)
+
 	var data T
 	if err := json.Unmarshal([]byte(val), &data); err != nil {
 		return nil, app_error.NewAppError(http.StatusInternalServerError, "unexpected error occur when unmarshal json", "json")
 	}
-
 	return &data, nil
 }
 

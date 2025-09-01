@@ -10,6 +10,8 @@ import (
 
 type ChatRepoContract interface {
 	FindOrCreateRoom(ctx context.Context, senderID, receiverID string) (*entity.Room, *app_error.AppError)
-	InsertMessage(ctx context.Context, roomId, senderId string, content string) (primitive.ObjectID, *app_error.AppError)
-	UpdateRoomMetadata(ctx context.Context, roomId, senderId string, msgId primitive.ObjectID) error
+	FindRoomByID(ctx context.Context, roomID string) (*entity.Room, *app_error.AppError)
+	InsertMessage(ctx context.Context, roomID, senderID, receiverID string, content string) (primitive.ObjectID, *app_error.AppError)
+	UpdateRoomMetadata(ctx context.Context, roomID, senderID string, msgId primitive.ObjectID) error
+	GetPrivateMessages(ctx context.Context, roomID string, limit int, beforeID *string) ([]*entity.Message, *app_error.AppError)
 }

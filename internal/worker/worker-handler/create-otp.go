@@ -28,7 +28,8 @@ func (wh *WorkerHandler) HandlerCreateUserOTP(ctx context.Context, redis *redis.
 	log.Info().Msgf("generated otp %s for user %s", otp, payload.UserId)
 
 	key := fmt.Sprintf("otp:%s", payload.UserId)
-	if err := redis.Set(ctx, key, otp, time.Minute*5).Err(); err != nil {
+	jsonVal, _ := json.Marshal(otp)
+	if err := redis.Set(ctx, key, jsonVal, time.Minute*5).Err(); err != nil {
 		return fmt.Errorf("failed to save otp: %w", err)
 	}
 

@@ -11,5 +11,5 @@ func UserRouter(r chi.Router, state *state.AppState) {
 
 	r.Post("/api/v1/users", handlers.WrapHandler(userHandler.CreateUser))
 	r.Post("/api/v1/users/{userId}", handlers.WrapHandler(userHandler.VerifyUser))
-
+	r.Post("/api/v1/users/login", handlers.WrapHandler(userHandler.LoginUser))
 }

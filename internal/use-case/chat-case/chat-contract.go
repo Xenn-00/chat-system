@@ -8,6 +8,6 @@ import (
 )
 
 type ChatServiceContract interface {
-	CreateRoomChat(ctx context.Context, req chat_dto.CreateRoomRequest) (*chat_dto.CreateRoomResponse, *app_error.AppError)
-	SendPrivateMessage(ctx context.Context, req chat_dto.SendPrivateMessageRequest, senderID string) (*chat_dto.SendPrivateMessageResponse, *app_error.AppError)
+	SendPrivateMessage(ctx context.Context, req chat_dto.SendPrivateMessageRequest, senderID, receiverID string) (*chat_dto.SendPrivateMessageResponse, *app_error.AppError)
+	GetPrivateMessage(ctx context.Context, req chat_dto.GetPrivateMessagesRequest, roomID string) (*chat_dto.GetPrivateMessagesResponse, *app_error.AppError)
 }

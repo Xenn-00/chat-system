@@ -11,4 +11,5 @@ type UserRepoContract interface {
 	CountUser(ctx context.Context, filter entity.UserFilter) (int64, *app_error.AppError)
 	SaveUser(ctx context.Context, model entity.User) *app_error.AppError
 	VerifyUser(ctx context.Context, userId string) (*entity.User, *app_error.AppError)
+	FindUserByCredential(ctx context.Context, username string) (*entity.User, *app_error.AppError)
 }

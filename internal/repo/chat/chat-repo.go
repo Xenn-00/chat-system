@@ -12,6 +12,8 @@ import (
 	app_error "github.com/xenn00/chat-system/internal/errors"
 	"github.com/xenn00/chat-system/state"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/v2/bson"
+	"go.mongodb.org/mongo-driver/v2/mongo/options"
 	"gorm.io/gorm"
 )
 
@@ -53,10 +55,12 @@ func (r *ChatRepo) FindOrCreateRoom(ctx context.Context, senderID, receiverID st
 			{
 				RoomID: newRoom.ID.String(),
 				UserID: senderID,
+				Role:   "member",
 			},
 			{
 				RoomID: newRoom.ID.String(),
 				UserID: receiverID,
+				Role:   "member",
 			},
 		}
 
@@ -79,41 +83,86 @@ func (r *ChatRepo) FindOrCreateRoom(ctx context.Context, senderID, receiverID st
 	return &room, nil
 }
 
-func (r *ChatRepo) InsertMessage(ctx context.Context, roomId, senderId string, content string) (primitive.ObjectID, *app_error.AppError) {
-	coll := r.AppState.Mongo.Database("chatdb").Collection("messages")
+func (r *ChatRepo) FindRoomByID(ctx context.Context, roomID string) (*entity.Room, *app_error.AppError) {
+	var room entity.Room
+	if err := r.AppState.DB.WithContext(ctx).Where("id = ?", roomID).First(&room).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, app_error.NewAppError(http.StatusNotFound, "room not found", "not-found")
+		}
+		return nil, app_error.NewAppError(http.StatusInternalServerError, "failed to fetch room", "db-error")
+	}
+	return &room, nil
+}
+
+func (r *ChatRepo) InsertMessage(ctx context.Context, roomID, senderID, receiverID string, content string) (primitive.ObjectID, *app_error.AppError) {
+	coll := r.AppState.Mongo.Database("chat_collection").Collection("messages")
 
 	msg := entity.Message{
-		RoomID:   roomId,
-		SenderID: senderId,
-		Content:  content,
-		IsRead:   false,
-		CreateAt: time.Now(),
+		ID:         primitive.NewObjectID(),
+		RoomID:     roomID,
+		SenderID:   senderID,
+		ReceiverID: receiverID,
+		Content:    content,
+		IsRead:     false,
+		CreatedAt:  time.Now(),
 	}
 
-	res, err := coll.InsertOne(ctx, msg)
+	_, err := coll.InsertOne(ctx, msg)
 	if err != nil {
 		return primitive.NilObjectID, app_error.NewAppError(http.StatusInternalServerError, fmt.Sprintf("failed to add msg: %v", err), "mongo")
 	}
 
-	oid, ok := res.InsertedID.(primitive.ObjectID)
-	if !ok {
-		return primitive.NilObjectID, app_error.NewAppError(http.StatusInternalServerError, fmt.Sprintf("failed to cast inserted ID to ObjectID: %v", err), "casting-objectID")
-	}
-
-	return oid, nil
+	return msg.ID, nil
 }
 
-func (r *ChatRepo) UpdateRoomMetadata(ctx context.Context, roomId, senderId string, msgId primitive.ObjectID) error {
+func (r *ChatRepo) UpdateRoomMetadata(ctx context.Context, roomID, senderID string, msgId primitive.ObjectID) error {
 	tx := r.AppState.DB.WithContext(ctx).Begin()
 
-	if err := tx.Model(&entity.RoomMember{}).Where("room_id = ? AND user_id = ?", roomId, senderId).Updates(map[string]any{
-		"last_message_id": msgId.Hex(),
-		"last_message_at": time.Now(),
-		"unread_count":    gorm.Expr("unread_count + ?", 1),
+	if err := tx.Model(&entity.RoomMember{}).Where("room_id = ? AND user_id = ?", roomID, senderID).Updates(map[string]any{
+		"last_read_msg_id": msgId.Hex(),
+		"last_message_at":  time.Now(),
+		"unread_count":     gorm.Expr("unread_count + ?", 1),
 	}).Error; err != nil {
 		tx.Rollback()
 		return app_error.NewAppError(http.StatusInternalServerError, "failed to update last message metadata", "db-error")
 	}
 
 	return tx.Commit().Error
+}
+
+func (r *ChatRepo) GetPrivateMessages(ctx context.Context, roomID string, limit int, beforeID *string) ([]*entity.Message, *app_error.AppError) {
+	collection := r.AppState.Mongo.Database("chat_collection").Collection("messages")
+
+	// base filter: all messages in the room
+	filter := bson.M{"room_id": roomID}
+
+	// if beforeID is provided -> filter messages with ID < beforeID
+	if beforeID != nil {
+		objID, err := primitive.ObjectIDFromHex(*beforeID)
+		if err != nil {
+			return nil, app_error.NewAppError(http.StatusBadRequest, fmt.Sprintf("error when trying to parse before_id: %v", err), "before-id")
+		}
+		filter["_id"] = bson.M{"$lt": objID}
+	}
+
+	cur, err := collection.Find(ctx, filter, options.Find().SetSort(bson.D{{Key: "_id", Value: -1}}).SetLimit(int64(limit))) // sort by _id desc to get latest messages
+
+	if err != nil {
+		return nil, app_error.NewAppError(http.StatusInternalServerError, fmt.Sprintf("failed to fetch messages: %v", err), "mongo")
+	}
+
+	defer cur.Close(ctx)
+
+	var messages []*entity.Message
+
+	if err := cur.All(ctx, &messages); err != nil {
+		return nil, app_error.NewAppError(http.StatusInternalServerError, fmt.Sprintf("failed to decode messages: %v", err), "mongo")
+	}
+
+	// reverse messages to be in ascending order (oldest to newest)
+	for i, j := 0, len(messages)-1; i < j; i, j = i+1, j-1 {
+		messages[i], messages[j] = messages[j], messages[i]
+	}
+
+	return messages, nil
 }
