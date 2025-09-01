@@ -80,3 +80,4 @@ go run main.go
 - Docker
 
 ## License
+This project is licensed under the [MIT LICENSE](LICENSE) 
