@@ -62,8 +62,8 @@
 <b>Run Locally</b>
 ```
 # clone repo
-git clone https://github.com/username/chat-system-go.git
-cd chat-system-go
+git clone https://github.com/Xenn-00/chat-system.git
+cd chat-system
 
 # install deps
 go mod tidy
