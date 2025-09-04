@@ -26,10 +26,12 @@ type ChatHandler struct {
 }
 
 func NewChatHandler(state *state.AppState) *ChatHandler {
+	validate := validator.New()
+	validate.RegisterValidation("objectID", chat_dto.ObjectIDValidator)
 	return &ChatHandler{
 		State:    state,
 		Producer: queue.NewProducer(state.Redis),
-		Validate: validator.New(),
+		Validate: validate,
 		Service:  chat_service.NewChatService(state),
 	}
 }
@@ -68,13 +70,14 @@ func (h *ChatHandler) SendPrivateMessage(w http.ResponseWriter, r *http.Request)
 
 	// notif / ws broadcast
 	go func() {
-		jobPayload := &types.BroadcastPayload{
-			RoomID:     resp.RoomID,
+		jobPayload := &types.BroadcastMessagePayload{
 			MessageID:  resp.MessageID,
+			RoomID:     resp.RoomID,
 			SenderID:   resp.SenderID,
-			ReceiverID: receiverID,
+			ReceiverID: resp.ReceiverID,
 			Content:    resp.Content,
-			CreatedAt:  resp.CreatedAt,
+
+			CreatedAt: resp.CreatedAt,
 		}
 
 		job := queue.Job{
@@ -123,6 +126,107 @@ func (h *ChatHandler) GetPrivateMessages(w http.ResponseWriter, r *http.Request)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(CreateResponse("messages fetch successfully", *resp, reqID))
+
+	return nil
+
+}
+
+func (h *ChatHandler) ReplyPrivateMessage(w http.ResponseWriter, r *http.Request) *app_error.AppError {
+	var req chat_dto.ReplyPrivateMessageRequest
+	defer r.Body.Close()
+
+	// I need to get room_id from uri param
+	roomID := chi.URLParam(r, "roomId")
+
+	// get user_id from context
+	userID, ok := r.Context().Value(middleware.UserClaimsKey).(string)
+	if !ok || userID == "" {
+		return app_error.NewAppError(http.StatusUnauthorized, "user id is not found in context", "context")
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		return app_error.NewAppError(http.StatusBadRequest, "Invalid JSON", "body")
+	}
+
+	if err := h.Validate.Struct(req); err != nil {
+		return app_error.NewAppError(http.StatusBadRequest, fmt.Sprintf("Invalid fields: %v", err), "validation")
+	}
+
+	resp, err := h.Service.ReplyPrivateMessage(r.Context(), req, userID, roomID)
+	if err != nil {
+		return err
+	}
+
+	reqID, ok := r.Context().Value(middleware.RequestIdKey).(string)
+	if !ok {
+		reqID = "unknown"
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(CreateResponse("message replied successfully", *resp, reqID))
+
+	// notif / ws broadcast
+	go func() {
+		jobPayload := &types.BroadcastMessagePayload{
+			MessageID:  resp.MessageID,
+			RoomID:     resp.RoomID,
+			SenderID:   resp.SenderID,
+			ReceiverID: resp.ReceiverID,
+			Content:    resp.Content,
+			IsRead:     &resp.IsRead,
+			ReplyTo: &types.ReplyTo{
+				MessageID: resp.ReplyTo.RepliedMessageID,
+				Content:   resp.ReplyTo.Content,
+				SenderID:  resp.ReplyTo.SenderID,
+			},
+			CreatedAt: resp.CreatedAt,
+		}
+
+		job := queue.Job{
+			ID:        uuid.New().String(),
+			Type:      "broadcast_private_message_reply",
+			Payload:   queue.MustMarshal(jobPayload),
+			Priority:  1,
+			Retry:     0,
+			MaxRetry:  3,
+			CreatedAt: time.Now().Unix(),
+			ExpireAt:  time.Now().Add(1 * time.Minute).Unix(),
+		}
+
+		if err := h.Producer.Enqueue(h.State.Ctx, job); err != nil {
+			log.Error().Err(err).Msg("Failed to enqueue job")
+		}
+	}()
+
+	return nil
+}
+
+func (h *ChatHandler) MarkMessageAsRead(w http.ResponseWriter, r *http.Request) *app_error.AppError {
+	// get room_id from uri param and message_id from query param
+	roomID := chi.URLParam(r, "roomId")
+	messageID := r.URL.Query().Get("messageID")
+
+	if roomID == "" || messageID == "" {
+		return app_error.NewAppError(http.StatusBadRequest, "room_id and message_id are required", "params")
+	}
+
+	// get user_id from context
+	userID, ok := r.Context().Value(middleware.UserClaimsKey).(string)
+	if !ok || userID == "" {
+		return app_error.NewAppError(http.StatusUnauthorized, "user id is not found in context", "context")
+	}
+
+	if err := h.Service.MarkPrivateMessageAsRead(r.Context(), userID, roomID, messageID); err != nil {
+		return err
+	}
+
+	reqID, ok := r.Context().Value(middleware.RequestIdKey).(string)
+	if !ok {
+		reqID = "unknown"
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(CreateResponse("message marked as read successfully", "OK", reqID))
 
 	return nil
 }

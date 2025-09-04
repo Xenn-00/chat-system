@@ -13,6 +13,7 @@ import (
 	"github.com/xenn00/chat-system/state"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/v2/bson"
+	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 	"gorm.io/gorm"
 )
@@ -94,27 +95,6 @@ func (r *ChatRepo) FindRoomByID(ctx context.Context, roomID string) (*entity.Roo
 	return &room, nil
 }
 
-func (r *ChatRepo) InsertMessage(ctx context.Context, roomID, senderID, receiverID string, content string) (primitive.ObjectID, *app_error.AppError) {
-	coll := r.AppState.Mongo.Database("chat_collection").Collection("messages")
-
-	msg := entity.Message{
-		ID:         primitive.NewObjectID(),
-		RoomID:     roomID,
-		SenderID:   senderID,
-		ReceiverID: receiverID,
-		Content:    content,
-		IsRead:     false,
-		CreatedAt:  time.Now(),
-	}
-
-	_, err := coll.InsertOne(ctx, msg)
-	if err != nil {
-		return primitive.NilObjectID, app_error.NewAppError(http.StatusInternalServerError, fmt.Sprintf("failed to add msg: %v", err), "mongo")
-	}
-
-	return msg.ID, nil
-}
-
 func (r *ChatRepo) UpdateRoomMetadata(ctx context.Context, roomID, senderID string, msgId primitive.ObjectID) error {
 	tx := r.AppState.DB.WithContext(ctx).Begin()
 
@@ -165,4 +145,78 @@ func (r *ChatRepo) GetPrivateMessages(ctx context.Context, roomID string, limit 
 	}
 
 	return messages, nil
+}
+
+func (r *ChatRepo) FindMessageByID(ctx context.Context, messageID string) (*entity.Message, *app_error.AppError) {
+	collection := r.AppState.Mongo.Database("chat_collection").Collection("messages")
+	objID, err := primitive.ObjectIDFromHex(messageID)
+	if err != nil {
+		return nil, app_error.NewAppError(http.StatusBadRequest, fmt.Sprintf("invalid message ID: %v", err), "invalid-id")
+	}
+	var message entity.Message
+	if err := collection.FindOne(ctx, bson.M{"_id": objID}).Decode((&message)); err != nil {
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			return nil, app_error.NewAppError(http.StatusNotFound, "message not found or has been deleted", "not-found")
+		}
+		return nil, app_error.NewAppError(http.StatusInternalServerError, fmt.Sprintf("failed to fetch message: %v", err), "mongo")
+	}
+
+	return &message, nil
+}
+
+func (r *ChatRepo) FindRoomMembers(ctx context.Context, roomID string) ([]*entity.RoomMember, *app_error.AppError) {
+	var members []*entity.RoomMember
+	if err := r.AppState.DB.WithContext(ctx).Where("room_id = ?", roomID).Find(&members).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, app_error.NewAppError(http.StatusNotFound, "room not found", "not-found")
+		}
+		return nil, app_error.NewAppError(http.StatusInternalServerError, "failed to fetch room members", "db-error")
+	}
+
+	return members, nil
+}
+
+func (r *ChatRepo) CreateMessage(ctx context.Context, msg *entity.Message) (primitive.ObjectID, *app_error.AppError) {
+	collection := r.AppState.Mongo.Database("chat_collection").Collection("messages")
+	_, err := collection.InsertOne(ctx, msg)
+	if err != nil {
+		return primitive.NilObjectID, app_error.NewAppError(http.StatusInternalServerError, fmt.Sprintf("failed to create message: %v", err), "mongo")
+	}
+	return msg.ID, nil
+}
+
+func (r *ChatRepo) ReplyMessage(ctx context.Context, msg *entity.Message) (primitive.ObjectID, *app_error.AppError) {
+	_, err := r.CreateMessage(ctx, msg)
+	if err != nil {
+		return primitive.NilObjectID, err
+	}
+
+	// update is_read status of the replied message to true
+	collection := r.AppState.Mongo.Database("chat_collection").Collection("messages")
+	_, updateErr := collection.UpdateOne(ctx, bson.M{"_id": msg.ReplyTo.MessageID}, bson.M{"$set": bson.M{"is_read": true}})
+	if updateErr != nil {
+		return primitive.NilObjectID, app_error.NewAppError(http.StatusInternalServerError, fmt.Sprintf("failed to update replied message is_read status: %v", updateErr), "mongo")
+	}
+
+	// update metadata for the room members
+	if err := r.UpdateRoomMetadata(ctx, msg.RoomID, msg.SenderID, msg.ID); err != nil {
+		return primitive.NilObjectID, app_error.NewAppError(http.StatusInternalServerError, fmt.Sprintf("failed to update room metadata after reply message: %v", err), "db-error")
+	}
+
+	return msg.ID, nil
+}
+
+func (r *ChatRepo) MarkMessageAsRead(ctx context.Context, messageID string) *app_error.AppError {
+	collection := r.AppState.Mongo.Database("chat_collection").Collection("messages")
+	objID, err := primitive.ObjectIDFromHex(messageID)
+	if err != nil {
+		return app_error.NewAppError(http.StatusBadRequest, fmt.Sprintf("invalid message ID: %v", err), "invalid-id")
+	}
+
+	_, err = collection.UpdateOne(ctx, bson.M{"_id": objID}, bson.M{"$set": bson.M{"is_read": true}})
+	if err != nil {
+		return app_error.NewAppError(http.StatusInternalServerError, fmt.Sprintf("failed to update replied message is_read status: %v", err), "mongo")
+	}
+
+	return nil
 }

@@ -14,10 +14,10 @@ type Message struct {
 	Content     string             `bson:"content"`
 	IsRead      bool               `bson:"is_read"`
 	IsEdited    bool               `bson:"is_edited"`
-	Attachments []*Attachment      `bson:"attachments,omitempty"`
-	ReplyTo     *ReplyTo           `bson:"reply_to,omitempty"`
+	Attachments []*Attachment      `bson:"attachments"`
+	ReplyTo     *ReplyTo           `bson:"reply_to"`
 	CreatedAt   time.Time          `bson:"created_at"`
-	UpdatedAt   *time.Time         `bson:"updated_at,omitempty"`
+	UpdatedAt   *time.Time         `bson:"updated_at"`
 }
 
 type ReplyTo struct {

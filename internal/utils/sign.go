@@ -20,7 +20,7 @@ type Claims struct {
 
 func IssueNewTokens(userId, username string, privateKey *rsa.PrivateKey) (string, string, string, error) {
 	issueAt := time.Now().Unix()
-	expAccess := issueAt + 3600
+	expAccess := issueAt + 21600
 	expRefresh := issueAt + 7*24*3600
 	jti := uuid.New().String()
 

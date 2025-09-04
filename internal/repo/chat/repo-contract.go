@@ -11,7 +11,11 @@ import (
 type ChatRepoContract interface {
 	FindOrCreateRoom(ctx context.Context, senderID, receiverID string) (*entity.Room, *app_error.AppError)
 	FindRoomByID(ctx context.Context, roomID string) (*entity.Room, *app_error.AppError)
-	InsertMessage(ctx context.Context, roomID, senderID, receiverID string, content string) (primitive.ObjectID, *app_error.AppError)
+	FindRoomMembers(ctx context.Context, roomID string) ([]*entity.RoomMember, *app_error.AppError)
+	CreateMessage(ctx context.Context, msg *entity.Message) (primitive.ObjectID, *app_error.AppError)
+	ReplyMessage(ctx context.Context, msg *entity.Message) (primitive.ObjectID, *app_error.AppError)
 	UpdateRoomMetadata(ctx context.Context, roomID, senderID string, msgId primitive.ObjectID) error
 	GetPrivateMessages(ctx context.Context, roomID string, limit int, beforeID *string) ([]*entity.Message, *app_error.AppError)
+	FindMessageByID(ctx context.Context, messageID string) (*entity.Message, *app_error.AppError)
+	MarkMessageAsRead(ctx context.Context, messageID string) *app_error.AppError
 }

@@ -82,7 +82,7 @@ func initMessageCollection(ctx context.Context, db *mongo.Database) error {
 					"required": []string{"message_id", "content", "sender_id"},
 					"properties": bson.M{
 						"message_id": bson.M{
-							"bsonType":    "objectId",
+							"bsonType":    []string{"objectId", "binData"},
 							"description": "ID of the replied message",
 						},
 						"content": bson.M{
@@ -113,7 +113,7 @@ func initMessageCollection(ctx context.Context, db *mongo.Database) error {
 					},
 				},
 				"is_edited": bson.M{
-					"bsonType":    []string{"bool", "null"},
+					"bsonType":    "bool",
 					"description": "Whether the message has been edited",
 				},
 				"created_at": bson.M{

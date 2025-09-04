@@ -23,6 +23,8 @@ func HandleJob(ctx context.Context, job queue.Job, redis *redis.Client, ws *webs
 		return workerHandler.HandlerCreateUserOTP(ctx, redis, job.Payload)
 	case "broadcast_private_message":
 		return workerHandler.HandleBroadcastPrivateMessage(job.Payload)
+	case "broadcast_private_message_reply":
+		return workerHandler.HandleBroadcasPrivateMessageReply(job.Payload)
 	default:
 		return fmt.Errorf("unknown job type: %s", job.Type)
 	}
