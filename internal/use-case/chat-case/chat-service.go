@@ -28,6 +28,8 @@ func NewChatService(appState *state.AppState) ChatServiceContract {
 	}
 }
 
+const PrivateRoomMemberCount = 2
+
 func (c *ChatService) SendPrivateMessage(ctx context.Context, req chat_dto.SendPrivateMessageRequest, senderID, receiverID string) (*chat_dto.SendPrivateMessageResponse, *app_error.AppError) {
 	room, err := c.ChatRepo.FindOrCreateRoom(ctx, senderID, receiverID)
 	if err != nil {
@@ -195,17 +197,11 @@ func (c *ChatService) MarkPrivateMessageAsRead(ctx context.Context, receiverID, 
 		return err
 	}
 
-	if len(roomMember) != 2 {
+	if len(roomMember) != PrivateRoomMemberCount {
 		return app_error.NewAppError(http.StatusBadRequest, "room must have exactly 2 members, not private", "invalid-room")
 	}
-	isMember := false
-	for _, member := range roomMember {
-		if member.UserID == receiverID {
-			isMember = true
-		}
-	}
 
-	if !isMember {
+	if !c.isUserMemberOfRoom(roomMember, receiverID) {
 		return app_error.NewAppError(http.StatusForbidden, "you are not a member of this room", "forbidden")
 	}
 
@@ -218,14 +214,23 @@ func (c *ChatService) MarkPrivateMessageAsRead(ctx context.Context, receiverID, 
 		return app_error.NewAppError(http.StatusBadRequest, "the message does not belong to this room", "forbidden")
 	}
 
-	if msg.ReceiverID != receiverID {
-		return app_error.NewAppError(http.StatusForbidden, "you are not the receiver of this message", "forbidden")
+	if msg.SenderID == receiverID {
+		return app_error.NewAppError(http.StatusBadRequest, "cannot mark your own message as read", "invalid-action")
 	}
+
 	if msg.IsRead {
 		return nil
 	}
-	if err := c.ChatRepo.MarkMessageAsRead(ctx, messageID); err != nil {
-		return err
+
+	return c.ChatRepo.MarkMessageAsRead(ctx, messageID)
+}
+
+func (c *ChatService) isUserMemberOfRoom(members []*entity.RoomMember, userID string) bool {
+	for _, member := range members {
+		if member.UserID == userID {
+			return true
+		}
 	}
-	return nil
+
+	return false
 }

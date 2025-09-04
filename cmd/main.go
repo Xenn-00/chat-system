@@ -47,7 +47,7 @@ func main() {
 	workerPool := worker.NewWorkerPool(state.Redis, 5, wsHub)
 
 	go workerPool.Start(ctx)
-	go workerPool.StartDLQWorker(ctx)
+	// go workerPool.StartDLQWorker(ctx)
 
 	// serve the application
 	go func() {

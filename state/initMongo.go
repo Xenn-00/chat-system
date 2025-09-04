@@ -37,6 +37,10 @@ func InitMongo(ctx context.Context) (*mongo.Client, error) {
 	if err := initMessageCollection(ctx, db); err != nil {
 		return nil, fmt.Errorf("faield to create 'messages' collection: %w", err)
 	}
+	// init dlq_jobs collections
+	if err := initDLQCollection(ctx, db); err != nil {
+		return nil, fmt.Errorf("failed to create 'dlq_jobs' collection: %w", err)
+	}
 
 	log.Info().Msg("MongoDB connection established successfully")
 	return client, nil
@@ -160,5 +164,100 @@ func initMessageCollection(ctx context.Context, db *mongo.Database) error {
 	}
 
 	log.Info().Msg("Already have 'messages' collection!")
+	return nil
+}
+
+func initDLQCollection(ctx context.Context, db *mongo.Database) error {
+	validator := bson.M{
+		"$jsonSchema": bson.M{
+			"bsonType": "object",
+			"required": []string{"job_id", "type", "status", "error_msg", "created_at", "expired_at"},
+			"properties": bson.M{
+				"job_id": bson.M{
+					"bsonType":    "string",
+					"description": "Unique job ID",
+				},
+				"type": bson.M{
+					"bsonType":    "string",
+					"description": "Job Type",
+				},
+				"status": bson.M{
+					"bsonType":    "string",
+					"description": "Status of DQL job",
+				},
+				"retry_count": bson.M{
+					"bsonType":    "int",
+					"description": "Retry count",
+				},
+				"original_retry_count": bson.M{
+					"bsonType":    "int",
+					"description": "Original retry count",
+				},
+				"payload": bson.M{
+					"bsonType":    []string{"object", "array"},
+					"description": "Raw payload",
+				},
+				"next_retry_at": bson.M{
+					"bsonType":    "timestamp",
+					"description": "Next retry job at",
+				},
+				"error_msg": bson.M{
+					"bsonType":    "string",
+					"description": "Error message",
+				},
+				"created_at": bson.M{
+					"bsonType":    "timestamp",
+					"description": "Creation timestamp",
+				},
+				"updated_at": bson.M{
+					"bsonType":    "timestamp",
+					"description": "Update timestamp",
+				},
+				"completed_at": bson.M{
+					"bsonType":    "timestamp",
+					"description": "Complete job timestamp",
+				},
+				"failed_at": bson.M{
+					"bsonType":    "timestamp",
+					"description": "failed job timestamp",
+				},
+				"expired_at": bson.M{
+					"bsonType":    "timestamp",
+					"description": "Expiration timestamp",
+				},
+			},
+		},
+	}
+
+	cmd := bson.D{
+		{Key: "collMod", Value: "dlq_jobs"},
+		{Key: "validator", Value: validator},
+		{Key: "validationLevel", Value: "moderate"},
+	}
+
+	if err := db.RunCommand(ctx, cmd).Err(); err != nil {
+		// fallback if coll not yet exist
+		if commandErr, ok := err.(mongo.CommandError); ok && commandErr.Code == 26 {
+			// code 26 = NamespaceNotFound -> if collection is not exist
+			opts := options.CreateCollection().SetValidator(validator)
+			if err := db.CreateCollection(ctx, "dlq_jobs", opts); err != nil {
+				return fmt.Errorf("failed to create dlq_jobs collection: %w", err)
+			}
+		} else {
+			return fmt.Errorf("failed to modify dlq_jobs collection: %w", err)
+		}
+	}
+
+	// TTL index on expired_at
+	indexModel := mongo.IndexModel{
+		Keys:    bson.M{"expired_at": 1},
+		Options: options.Index().SetExpireAfterSeconds(0),
+	}
+
+	if _, err := db.Collection("dlq_jobs").Indexes().CreateOne(ctx, indexModel); err != nil {
+		return fmt.Errorf("failed to create TTL index on dlq_jobs: %w", err)
+	}
+
+	log.Info().Msg("DLQ jobs collection initialized successfully")
 	return nil
 }

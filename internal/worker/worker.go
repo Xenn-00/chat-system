@@ -10,15 +10,19 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog/log"
 	"github.com/xenn00/chat-system/internal/queue"
+	"github.com/xenn00/chat-system/internal/utils/types"
 	"github.com/xenn00/chat-system/internal/websocket"
+	"go.mongodb.org/mongo-driver/v2/mongo"
 )
 
 type WorkerPool struct {
 	Redis      *redis.Client
+	Mongo      *mongo.Client
 	WorkerNum  int
 	JobChannel chan string
 	wg         sync.WaitGroup
 	ws         *websocket.Hub
+	DLQConfig  types.DLQRetryConfig
 }
 
 func NewWorkerPool(redis *redis.Client, workerNum int, ws *websocket.Hub) *WorkerPool {
@@ -27,6 +31,14 @@ func NewWorkerPool(redis *redis.Client, workerNum int, ws *websocket.Hub) *Worke
 		WorkerNum:  workerNum,
 		JobChannel: make(chan string, 100), // Buffered channel to hold jobs
 		ws:         ws,
+		DLQConfig: types.DLQRetryConfig{
+			BatchSize:      10,
+			RetryInterval:  5 * time.Minute,
+			MaxRetryCount:  3,
+			BackoffFactor:  2.0,
+			DatabaseName:   "chat_collection",
+			CollectionName: "dlq_jobs",
+		},
 	}
 }
 
@@ -37,6 +49,10 @@ func (wp *WorkerPool) Start(ctx context.Context) {
 		wp.wg.Add(1)
 		go wp.worker(ctx, i)
 	}
+
+	// start DLQ workers
+	go wp.StartDLQWorker(ctx)        // Existing: Redis DLQ -> MongoDB
+	go wp.StartDLQRetryConsumer(ctx) // MongoDB -> Retry
 
 	go func() {
 		defer close(wp.JobChannel)
@@ -117,6 +133,11 @@ func (wp *WorkerPool) worker(ctx context.Context, id int) {
 					})
 					log.Warn().Str("job_id", job.ID).Msgf("Retrying in %v seconds (%d/%d)", delay.Seconds(), job.Retry, job.MaxRetry)
 				}
+			} else {
+				log.Info().
+					Str("job_id", job.ID).
+					Str("type", job.Type).
+					Msgf("Worker %d: Job completed successfully", id)
 			}
 		}
 	}

@@ -1,4 +1,5 @@
 # Real-Time Chat System
+
 <p>
   A real-time chat backend built with <b>Go</b> for scalability, concurrency safety, and clean architecture.
 </p>
@@ -7,15 +8,17 @@
 </p>
 
 ## ✨ Features
+
 - 🔒 Concurrency-safe message handling
 - ⚡ Real-time communication via WebSocket
-- 📬 Private chat flow (lazy room creation) → room dibuat saat first message dikirim
+- 📬 Private chat flow (lazy room creation) → room would be created when first message sent
 - 👥 Group chat flow → WhatsApp/Discord-like group creation & invites
 - 📨 Async worker for background tasks (priority queue, message persistence)
 - 💾 Hybrid storage → MongoDB for messages, SQL for metadata
 - ⏱️ Queue-based architecture (priority queue + worker)
 
 ## 🏗️ Project Tree Architecture
+
 ```
 .
 ├── cmd/                # Entry point (main.go)
@@ -43,23 +46,31 @@
 ├── docker-compose.yaml # Docker setup (Postgres, Mongo, Redis, dsb.)
 └── ...
 ```
-## 💡 Private Chat Flow 
+
+## 💡 Private Chat Flow
+
 1. User sent first message to subject -> system would checking if there any chat room respect to participant is already exists or not
-  - If yes -> reuse
-  - If not -> create new room + add chat participant
+
+- If yes -> reuse
+- If not -> create new room + add chat participant
+
 2. Store message content in MongoDB, metadata in SQL
 3. Broadcast to subject user via WebSocket
 
 ## 💡 Group Chat Flow
+
 - Working on it
 
 ## 🚀 Getting Started
+
 <b>Prerequisites</b>
+
 - Go `>=1.21`
 - PostgreSQL / MySQL (just fit with your preference SQL)
 - MongoDB
 - Redis (for working queue)
-<b>Run Locally</b>
+  <b>Run Locally</b>
+
 ```
 # clone repo
 git clone https://github.com/Xenn-00/chat-system.git
@@ -71,7 +82,9 @@ go mod tidy
 # run service
 go run main.go
 ```
+
 ## 🛠️ Tech Stack
+
 - Go (chi, goroutines, channels)
 - WebSocket
 - MongoDB
@@ -80,4 +93,5 @@ go run main.go
 - Docker
 
 ## License
-This project is licensed under the [MIT LICENSE](LICENSE) 
+
+This project is licensed under the [MIT LICENSE](LICENSE)
