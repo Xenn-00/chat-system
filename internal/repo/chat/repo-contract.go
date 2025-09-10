@@ -2,6 +2,7 @@ package chat_repo
 
 import (
 	"context"
+	"time"
 
 	"github.com/xenn00/chat-system/internal/entity"
 	app_error "github.com/xenn00/chat-system/internal/errors"
@@ -18,4 +19,5 @@ type ChatRepoContract interface {
 	GetPrivateMessages(ctx context.Context, roomID string, limit int, beforeID *string) ([]*entity.Message, *app_error.AppError)
 	FindMessageByID(ctx context.Context, messageID string) (*entity.Message, *app_error.AppError)
 	MarkMessageAsRead(ctx context.Context, messageID string) *app_error.AppError
+	UpdateMessage(ctx context.Context, msg *entity.Message, messageEditEntry *entity.MessageEditEntry, originalTimestamp *time.Time) *app_error.AppError
 }

@@ -47,14 +47,28 @@ func (wp *WorkerPool) Start(ctx context.Context) {
 
 	for i := 0; i < wp.WorkerNum; i++ {
 		wp.wg.Add(1)
-		go wp.worker(ctx, i)
+		go func(id int) {
+			defer wp.wg.Done()
+			wp.worker(ctx, i)
+		}(i)
 	}
 
 	// start DLQ workers
-	go wp.StartDLQWorker(ctx)        // Existing: Redis DLQ -> MongoDB
-	go wp.StartDLQRetryConsumer(ctx) // MongoDB -> Retry
-
+	wp.wg.Add(1)
 	go func() {
+		defer wp.wg.Done()
+		wp.StartDLQWorker(ctx) // Existing: Redis DLQ -> MongoDB
+	}()
+
+	wp.wg.Add(1)
+	go func() {
+		defer wp.wg.Done()
+		wp.StartDLQRetryConsumer(ctx) // MongoDB -> Retry
+	}()
+
+	wp.wg.Add(1)
+	go func() {
+		defer wp.wg.Done()
 		defer close(wp.JobChannel)
 		for {
 			select {
@@ -91,7 +105,6 @@ func (wp *WorkerPool) Start(ctx context.Context) {
 }
 
 func (wp *WorkerPool) worker(ctx context.Context, id int) {
-	defer wp.wg.Done()
 	log.Info().Msgf("Worker %d started", id)
 
 	for {

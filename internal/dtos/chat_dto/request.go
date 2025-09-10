@@ -20,6 +20,10 @@ type ReplyPrivateMessageRequest struct {
 	ReceiverID string `json:"receiver_id" validate:"required,uuid"`
 }
 
+type UpdatePrivateMessageRequest struct {
+	Content string `json:"content" validate:"min=1"`
+}
+
 func ObjectIDValidator(fl validator.FieldLevel) bool {
 	id := fl.Field().String()
 	_, err := primitive.ObjectIDFromHex(id)

@@ -15,5 +15,6 @@ func ChatRouter(r chi.Router, state *state.AppState) {
 		protected.Get("/api/v1/chat/{roomId}/messages", handlers.WrapHandler(chatHandler.GetPrivateMessages))
 		protected.Post("/api/v1/chat/{roomId}", handlers.WrapHandler(chatHandler.ReplyPrivateMessage))
 		protected.Patch("/api/v1/chat/{roomId}/read", handlers.WrapHandler(chatHandler.MarkMessageAsRead)) // receive query param message_id
+		protected.Put("/api/v1/chat/{roomId}/update", handlers.WrapHandler(chatHandler.UpdatePrivateMessage))
 	})
 }

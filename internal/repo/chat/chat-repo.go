@@ -220,3 +220,36 @@ func (r *ChatRepo) MarkMessageAsRead(ctx context.Context, messageID string) *app
 
 	return nil
 }
+
+func (r *ChatRepo) UpdateMessage(ctx context.Context, msg *entity.Message, messageEditEntry *entity.MessageEditEntry, originalTimestamp *time.Time) *app_error.AppError {
+	collection := r.AppState.Mongo.Database("chat_collection").Collection("messages")
+
+	filter := bson.M{
+		"_id": msg.ID,
+	}
+
+	// optimistic looking - ensure message wasn't updated by someone else
+	if originalTimestamp != nil {
+		filter["updated_at"] = bson.M{"$lte": *originalTimestamp}
+	}
+
+	update := bson.M{
+		"$set": bson.M{
+			"content":              msg.Content,
+			"is_edited":            true,
+			"updated_at":           msg.UpdatedAt,
+			"message_edit_history": append(msg.MessageEditHistory, messageEditEntry),
+		},
+	}
+
+	result, err := collection.UpdateOne(ctx, filter, update)
+	if err != nil {
+		return app_error.NewAppError(http.StatusInternalServerError, "failed to update message", "database")
+	}
+
+	if result.MatchedCount == 0 {
+		return app_error.NewAppError(http.StatusConflict, "Message was modified by another operation", "concurrent_update")
+	}
+
+	return nil
+}

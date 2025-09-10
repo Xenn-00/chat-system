@@ -230,3 +230,74 @@ func (h *ChatHandler) MarkMessageAsRead(w http.ResponseWriter, r *http.Request) 
 
 	return nil
 }
+
+func (h *ChatHandler) UpdatePrivateMessage(w http.ResponseWriter, r *http.Request) *app_error.AppError {
+	var req chat_dto.UpdatePrivateMessageRequest
+	defer r.Body.Close()
+
+	// get room_id from uri param and message_id from query param
+	roomID := chi.URLParam(r, "roomId")
+	messageID := r.URL.Query().Get("messageID")
+
+	if roomID == "" || messageID == "" {
+		return app_error.NewAppError(http.StatusBadRequest, "room_id and message_id are required", "params")
+	}
+
+	// get user id as sender id from context
+	userID, ok := r.Context().Value(middleware.UserClaimsKey).(string)
+	if !ok || userID == "" {
+		return app_error.NewAppError(http.StatusUnauthorized, "user id is not found in context", "context")
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		return app_error.NewAppError(http.StatusBadRequest, "Invalid JSON", "body")
+	}
+
+	if err := h.Validate.Struct(req); err != nil {
+		return app_error.NewAppError(http.StatusBadRequest, fmt.Sprintf("Invalid fields: %v", err), "validation")
+	}
+
+	resp, err := h.Service.UpdatePrivateMessage(r.Context(), req, userID, roomID, messageID)
+	if err != nil {
+		return err
+	}
+
+	reqID, ok := r.Context().Value(middleware.RequestIdKey).(string)
+	if !ok {
+		reqID = "unknown"
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(CreateResponse("message edited", *resp, reqID))
+
+	// notif / ws broadcast
+	go func() {
+		jobPayload := &types.BroadcastMessagePayload{
+			MessageID:  resp.MessageID,
+			RoomID:     resp.RoomID,
+			SenderID:   resp.SenderID,
+			ReceiverID: resp.ReceiverID,
+			Content:    resp.Content,
+			IsRead:     &resp.IsRead,
+			IsEdited:   &resp.IsEdited,
+			UpdatedAt:  &resp.UpdatedAt,
+		}
+
+		job := queue.Job{
+			ID:        uuid.New().String(),
+			Type:      "broadcast_private_message_updated",
+			Payload:   queue.MustMarshal(jobPayload),
+			Priority:  2,
+			Retry:     0,
+			MaxRetry:  3,
+			CreatedAt: time.Now().Unix(),
+			ExpireAt:  time.Now().Add(1 * time.Minute).Unix(),
+		}
+
+		if err := h.Producer.Enqueue(h.State.Ctx, job); err != nil {
+			log.Error().Err(err).Msg("Failed to enqueue job")
+		}
+	}()
+
+	return nil
+}

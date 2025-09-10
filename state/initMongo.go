@@ -3,7 +3,6 @@ package state
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/rs/zerolog/log"
 	"github.com/xenn00/chat-system/config"
@@ -18,11 +17,11 @@ func InitMongo(ctx context.Context) (*mongo.Client, error) {
 		return nil, fmt.Errorf("mongo url is empty") // No MongoDB URI provided, skip initialization
 	}
 
-	log.Info().Msgf("Connecting to MongoDB at %s", uri)
+	log.Info().Msg("Connecting to MongoDB")
 
 	clientOpts := options.Client().ApplyURI(uri)
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
+	// ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	// defer cancel()
 	client, err := mongo.Connect(clientOpts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to MongoDB: %w", err)
@@ -80,6 +79,32 @@ func initMessageCollection(ctx context.Context, db *mongo.Database) error {
 				"is_read": bson.M{
 					"bsonType":    "bool",
 					"description": "Is message already read",
+				},
+				"message_edit_history": bson.M{
+					"bsonType": []string{"array", "null"},
+					"required": []string{"message_id", "original_content", "new_content", "edited_by", "edited_at"},
+					"properties": bson.M{
+						"message_id": bson.M{
+							"bsonType":    []string{"objectId", "binData"},
+							"description": "ID of the replied message",
+						},
+						"original_content": bson.M{
+							"bsonType":    "string",
+							"description": "Original content of the message",
+						},
+						"new_content": bson.M{
+							"bsonType":    "string",
+							"description": "New content fof the message",
+						},
+						"edited_by": bson.M{
+							"bsonType":    "string",
+							"description": "Responsible ID who do editing message content",
+						},
+						"edited_at": bson.M{
+							"bsonType":    "string",
+							"description": "Edited at",
+						},
+					},
 				},
 				"reply_to": bson.M{
 					"bsonType": []string{"object", "null"},

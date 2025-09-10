@@ -16,24 +16,21 @@ import (
 )
 
 func (wp *WorkerPool) StartDLQRetryConsumer(ctx context.Context) {
-	wp.wg.Add(1)
-	go func() {
-		defer wp.wg.Done()
 
-		log.Info().Msg("DLQ retry consumer started")
-		ticker := time.NewTicker(wp.DLQConfig.RetryInterval)
-		defer ticker.Stop()
+	log.Info().Msg("DLQ retry consumer started")
+	ticker := time.NewTicker(wp.DLQConfig.RetryInterval)
+	defer ticker.Stop()
 
-		for {
-			select {
-			case <-ctx.Done():
-				log.Info().Msg("DLQ retry consumer stopping")
-				return
-			case <-ticker.C:
-				wp.processDLQJobs(ctx)
-			}
+	for {
+		select {
+		case <-ctx.Done():
+			log.Info().Msg("DLQ retry consumer stopping")
+			return
+		case <-ticker.C:
+			wp.processDLQJobs(ctx)
 		}
-	}()
+	}
+
 }
 
 func (wp *WorkerPool) processDLQJobs(ctx context.Context) {

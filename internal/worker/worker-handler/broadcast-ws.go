@@ -50,3 +50,31 @@ func (wh *WorkerHandler) HandleBroadcasPrivateMessageReply(raw json.RawMessage) 
 	wh.Ws.BroadcastToRoom(payload.RoomID, msg)
 	return nil
 }
+
+func (wh *WorkerHandler) HandleBroadcastPrivateMessageUpdate(raw json.RawMessage) error {
+	var payload types.BroadcastMessagePayload
+
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return fmt.Errorf("invalid broadcast payload: %w", err)
+	}
+
+	msg := websocket.Message{
+		Type:     "chat_message",
+		RoomId:   payload.RoomID,
+		SenderID: payload.SenderID,
+		Content:  payload.Content,
+		MessageEditHistory: []*websocket.MessageEditEntry{
+			{
+				MessageID:       payload.MessageID,
+				OriginalContent: payload.Content,
+				NewContent:      payload.MessageEditHistory[len(payload.MessageEditHistory)-1].NewContent,
+				EditedBy:        payload.SenderID,
+				EditedAt:        payload.UpdatedAt.Unix(),
+			},
+		},
+		Timestamp: payload.UpdatedAt.Unix(),
+	}
+
+	wh.Ws.BroadcastToRoom(payload.RoomID, msg)
+	return nil
+}

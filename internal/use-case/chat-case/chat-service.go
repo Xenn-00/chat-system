@@ -4,12 +4,15 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
+	"github.com/rs/zerolog/log"
 	"github.com/xenn00/chat-system/internal/dtos/chat_dto"
 	"github.com/xenn00/chat-system/internal/entity"
 	app_error "github.com/xenn00/chat-system/internal/errors"
 	chat_repo "github.com/xenn00/chat-system/internal/repo/chat"
+	"github.com/xenn00/chat-system/internal/utils"
 	"github.com/xenn00/chat-system/state"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
@@ -29,6 +32,10 @@ func NewChatService(appState *state.AppState) ChatServiceContract {
 }
 
 const PrivateRoomMemberCount = 2
+
+func createMessageCacheKey(roomId string) string {
+	return fmt.Sprintf("chat:%s", roomId)
+}
 
 func (c *ChatService) SendPrivateMessage(ctx context.Context, req chat_dto.SendPrivateMessageRequest, senderID, receiverID string) (*chat_dto.SendPrivateMessageResponse, *app_error.AppError) {
 	room, err := c.ChatRepo.FindOrCreateRoom(ctx, senderID, receiverID)
@@ -68,6 +75,18 @@ func (c *ChatService) SendPrivateMessage(ctx context.Context, req chat_dto.SendP
 }
 
 func (c *ChatService) GetPrivateMessage(ctx context.Context, req chat_dto.GetPrivateMessagesRequest, roomID string) (*chat_dto.GetPrivateMessagesResponse, *app_error.AppError) {
+	// check cache
+	cacheKey := createMessageCacheKey(roomID)
+
+	cachedMessage, err := utils.GetCacheData[chat_dto.GetPrivateMessagesResponse](c.AppState.Ctx, c.AppState.Redis, cacheKey)
+	if err != nil {
+		log.Warn().Msgf("cache miss, '%s'", cacheKey)
+	}
+
+	if cachedMessage != nil {
+		return cachedMessage, nil
+	}
+
 	// validate room exist
 	room, err := c.ChatRepo.FindRoomByID(ctx, roomID)
 	if err != nil {
@@ -113,12 +132,16 @@ func (c *ChatService) GetPrivateMessage(ctx context.Context, req chat_dto.GetPri
 	}
 
 	hasMore := len(messages) == req.Limit
-	// // return
-	return &chat_dto.GetPrivateMessagesResponse{
+
+	res := &chat_dto.GetPrivateMessagesResponse{
 		Messages:   respMessages,
 		NextCursor: nextCursor,
 		HasMore:    hasMore,
-	}, nil
+	}
+	// set cache
+	utils.SetCacheData(c.AppState.Ctx, c.AppState.Redis, cacheKey, res, time.Minute*5)
+	// // return
+	return res, nil
 }
 
 func (c *ChatService) ReplyPrivateMessage(ctx context.Context, req chat_dto.ReplyPrivateMessageRequest, senderID, roomID string) (*chat_dto.ReplyPrivateMessageResponse, *app_error.AppError) {
@@ -173,6 +196,11 @@ func (c *ChatService) ReplyPrivateMessage(ctx context.Context, req chat_dto.Repl
 	if err != nil {
 		return nil, err
 	}
+
+	// invalidate cache key
+	cacheKey := createMessageCacheKey(roomID)
+	utils.DeleteCacheData(c.AppState.Ctx, c.AppState.Redis, cacheKey)
+
 	// response with reply message dto
 	return &chat_dto.ReplyPrivateMessageResponse{
 		MessageID:  objID.Hex(),
@@ -180,7 +208,7 @@ func (c *ChatService) ReplyPrivateMessage(ctx context.Context, req chat_dto.Repl
 		SenderID:   senderID,
 		ReceiverID: msg.ReceiverID,
 		Content:    msg.Content,
-		ReplyTo: chat_dto.ReplyMessage{
+		ReplyTo: &chat_dto.ReplyMessage{
 			RepliedMessageID: repliedMsg.ID.Hex(),
 			Content:          repliedMsg.Content,
 			SenderID:         repliedMsg.SenderID,
@@ -222,13 +250,119 @@ func (c *ChatService) MarkPrivateMessageAsRead(ctx context.Context, receiverID, 
 		return nil
 	}
 
+	// invalidate cache key
+	cacheKey := createMessageCacheKey(roomID)
+	utils.DeleteCacheData(c.AppState.Ctx, c.AppState.Redis, cacheKey)
+
 	return c.ChatRepo.MarkMessageAsRead(ctx, messageID)
+}
+
+func (c *ChatService) UpdatePrivateMessage(ctx context.Context, req chat_dto.UpdatePrivateMessageRequest, senderID, roomID, messageID string) (*chat_dto.UpdatePrivateMessageResponse, *app_error.AppError) {
+	// get original message
+	originalMsg, err := c.ChatRepo.FindMessageByID(ctx, messageID)
+	if err != nil {
+		return nil, err
+	}
+	// authorization check
+	if originalMsg.SenderID != senderID {
+		return nil, app_error.NewAppError(http.StatusForbidden, "You can only update your own message", "authorization")
+	}
+	if originalMsg.RoomID != roomID {
+		return nil, app_error.NewAppError(http.StatusForbidden, "You are not a member of this chat room", "authorization")
+	}
+	// Time window check
+	editWindow := 15 * time.Minute
+	if time.Since(originalMsg.CreatedAt) > editWindow {
+		return nil, app_error.NewAppError(http.StatusForbidden, "Message edit time window expired", "time_expired")
+	}
+	// room & membership validation
+	room, err := c.ChatRepo.FindRoomByID(ctx, originalMsg.RoomID)
+	if err != nil || room.DeletedAt != nil {
+		return nil, app_error.NewAppError(http.StatusNotFound, "Room not found or inactive", "room")
+	}
+	member, err := c.ChatRepo.FindRoomMembers(ctx, originalMsg.RoomID)
+	if err != nil || c.isUserMemberOfRoom(member, senderID) {
+		return nil, app_error.NewAppError(http.StatusForbidden, "you are not a member of this room", "forbidden")
+	}
+	// Content validation (no empty, different from original)
+	if strings.TrimSpace(req.Content) == strings.TrimSpace(originalMsg.Content) {
+		return nil, app_error.NewAppError(http.StatusBadRequest, "New content must be different", "content")
+	}
+	// update message with optimistic locking
+	now := time.Now()
+	updatedMsg := &entity.Message{
+		ID:        originalMsg.ID,
+		Content:   req.Content,
+		IsEdited:  true,
+		UpdatedAt: &now,
+	}
+
+	messageEdit := &entity.MessageEditEntry{
+		MessageID:       originalMsg.ID,
+		OriginalContent: originalMsg.Content,
+		NewContent:      req.Content,
+		EditedBy:        originalMsg.SenderID,
+		EditedAt:        now,
+	}
+
+	err = c.ChatRepo.UpdateMessage(ctx, updatedMsg, messageEdit, originalMsg.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+
+	// invalidate cache key
+	cacheKey := createMessageCacheKey(roomID)
+	utils.DeleteCacheData(c.AppState.Ctx, c.AppState.Redis, cacheKey)
+
+	messageHistory := make([]*chat_dto.MessageEditEntry, 0)
+
+	if len(originalMsg.MessageEditHistory) == 0 {
+		messageHistory = append(messageHistory, &chat_dto.MessageEditEntry{
+			MessageID:       messageEdit.MessageID.Hex(),
+			OriginalContent: messageEdit.OriginalContent,
+			NewContent:      messageEdit.NewContent,
+			EditedBy:        messageEdit.EditedBy,
+			EditedAt:        messageEdit.EditedAt,
+		})
+	} else {
+		for _, entry := range originalMsg.MessageEditHistory {
+			messageHistory = append(messageHistory, &chat_dto.MessageEditEntry{
+				MessageID:       entry.MessageID.Hex(),
+				OriginalContent: entry.OriginalContent,
+				NewContent:      entry.NewContent,
+				EditedBy:        entry.EditedBy,
+				EditedAt:        entry.EditedAt,
+			})
+		}
+	}
+
+	var replyTo *chat_dto.ReplyMessage
+	if originalMsg.ReplyTo != nil {
+		replyTo = &chat_dto.ReplyMessage{
+			RepliedMessageID: originalMsg.ReplyTo.MessageID.Hex(),
+			Content:          originalMsg.ReplyTo.Content,
+			SenderID:         originalMsg.ReplyTo.SenderID,
+		}
+	}
+
+	return &chat_dto.UpdatePrivateMessageResponse{
+		MessageID:          originalMsg.ID.Hex(),
+		RoomID:             originalMsg.RoomID,
+		SenderID:           originalMsg.SenderID,
+		ReceiverID:         originalMsg.ReceiverID,
+		Content:            updatedMsg.Content,
+		MessageEditHistory: messageHistory,
+		ReplyTo:            replyTo,
+		IsRead:             originalMsg.IsRead,
+		IsEdited:           updatedMsg.IsEdited,
+		UpdatedAt:          *updatedMsg.UpdatedAt,
+	}, nil
 }
 
 func (c *ChatService) isUserMemberOfRoom(members []*entity.RoomMember, userID string) bool {
 	for _, member := range members {
 		if member.UserID == userID {
-			return true
+			return member.LeftAt == nil
 		}
 	}
 

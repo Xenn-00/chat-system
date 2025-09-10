@@ -12,4 +12,5 @@ type ChatServiceContract interface {
 	GetPrivateMessage(ctx context.Context, req chat_dto.GetPrivateMessagesRequest, roomID string) (*chat_dto.GetPrivateMessagesResponse, *app_error.AppError)
 	ReplyPrivateMessage(ctx context.Context, req chat_dto.ReplyPrivateMessageRequest, senderID, roomID string) (*chat_dto.ReplyPrivateMessageResponse, *app_error.AppError)
 	MarkPrivateMessageAsRead(ctx context.Context, receiverID, roomID, messageID string) *app_error.AppError
+	UpdatePrivateMessage(ctx context.Context, req chat_dto.UpdatePrivateMessageRequest, senderID, roomID, messageID string) (*chat_dto.UpdatePrivateMessageResponse, *app_error.AppError)
 }

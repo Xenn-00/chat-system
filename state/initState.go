@@ -36,7 +36,7 @@ func InitAppState(ctx context.Context, cancel context.CancelFunc) (*AppState, er
 		return nil, err
 	}
 
-	mongoClient, err := InitMongo(context.Background())
+	mongoClient, err := InitMongo(ctx)
 	if err != nil {
 		return nil, err
 	}
