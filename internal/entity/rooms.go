@@ -7,13 +7,13 @@ import (
 )
 
 type Room struct {
-	ID        uuid.UUID  `gorm:"primaryKey"`
-	RT        string     `gorm:"not null"`
-	Name      string     `gorm:"not null"`
-	CreatedBy string     `gorm:"not null"`
-	CreatedAt time.Time  `gorm:"not null"`
-	UpdatedAt *time.Time `gorm:"autoCreateTime"`
-	DeletedAt *time.Time `gorm:"autoUpdateTime"`
+	ID        uuid.UUID `gorm:"primaryKey"`
+	RT        string    `gorm:"not null"`
+	Name      string    `gorm:"not null"`
+	CreatedBy string    `gorm:"not null"`
+	CreatedAt time.Time `gorm:"not null"`
+	UpdatedAt *time.Time
+	DeletedAt *time.Time
 }
 
 type RoomMember struct {

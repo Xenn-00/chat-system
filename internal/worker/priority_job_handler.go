@@ -24,7 +24,7 @@ func HandleJob(ctx context.Context, job queue.Job, redis *redis.Client, ws *webs
 	case "broadcast_private_message":
 		return workerHandler.HandleBroadcastPrivateMessage(job.Payload)
 	case "broadcast_private_message_reply":
-		return workerHandler.HandleBroadcasPrivateMessageReply(job.Payload)
+		return workerHandler.HandleBroadcastPrivateMessageReply(job.Payload)
 	case "broadcast_private_message_updated":
 		return workerHandler.HandleBroadcastPrivateMessageUpdate(job.Payload)
 	default:

@@ -5,9 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/rs/zerolog/log"
 	"github.com/xenn00/chat-system/internal/entity"
 	app_error "github.com/xenn00/chat-system/internal/errors"
 	"github.com/xenn00/chat-system/state"
@@ -29,67 +31,110 @@ func NewChatRepo(appState *state.AppState) ChatRepoContract {
 }
 
 func (r *ChatRepo) FindOrCreateRoom(ctx context.Context, senderID, receiverID string) (*entity.Room, *app_error.AppError) {
-	var room entity.Room
-
-	tx := r.AppState.DB.WithContext(ctx).Begin()
-
-	err := tx.WithContext(ctx).Joins("JOIN room_members m1 ON rooms.id = m1.room_id").Joins("JOIN room_members m2 ON rooms.id = m2.room_id").Where("rooms.rt = ?", "private").Where("m1.user_id = ?", senderID).Where("m2.user_id = ?", receiverID).First(&room).Error
-
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-		tx.Rollback()
-		return nil, app_error.NewAppError(http.StatusInternalServerError, "unexpected error occur when fetch chat room", "db-error")
+	room, err := r.findPrivateRoom(ctx, senderID, receiverID)
+	if err == nil {
+		return room, nil
 	}
 
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		newRoom := &entity.Room{
-			ID:        uuid.New(),
-			RT:        "private",
-			CreatedBy: senderID,
-		}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, app_error.NewAppError(http.StatusInternalServerError, "failed to query private room", "db-error")
+	}
 
-		if err := tx.Create(newRoom).Error; err != nil {
+	// not found, try to create
+	newRoom, appErr := r.createPrivateRoom(ctx, senderID, receiverID)
+	if appErr != nil {
+		// If creation failed due to duplicate (race condition), try find again
+		if strings.Contains(appErr.Message, "duplicate") || strings.Contains(appErr.Message, "unique") {
+			room, err := r.findPrivateRoom(ctx, senderID, receiverID)
+			if err == nil {
+				return room, nil
+			}
+		}
+		return nil, appErr
+	}
+
+	return newRoom, nil
+}
+
+func (r *ChatRepo) findPrivateRoom(ctx context.Context, senderID, receiverID string) (*entity.Room, error) {
+	var room entity.Room
+
+	query := `
+		SELECT r.* FROM rooms r
+		WHERE r.rt = 'private' 
+		AND r.id IN (
+			SELECT rm1.room_id 
+			FROM room_members rm1 
+			WHERE rm1.user_id = ? 
+			AND EXISTS (
+				SELECT 1 FROM room_members rm2 
+				WHERE rm2.room_id = rm1.room_id 
+				AND rm2.user_id = ?
+			)
+			AND (
+				SELECT COUNT(*) FROM room_members rm3 
+				WHERE rm3.room_id = rm1.room_id
+			) = 2
+		)
+	`
+	err := r.AppState.DB.WithContext(ctx).Raw(query, senderID, receiverID).First(&room).Error
+	return &room, err
+}
+
+func (r *ChatRepo) createPrivateRoom(ctx context.Context, senderID, receiverID string) (*entity.Room, *app_error.AppError) {
+	tx := r.AppState.DB.WithContext(ctx).Begin()
+	defer func() {
+		if r := recover(); r != nil {
 			tx.Rollback()
-			return nil, app_error.NewAppError(http.StatusInternalServerError, "Failed to created private room", "db-error")
 		}
+	}()
 
-		members := &[]entity.RoomMember{
-			{
-				RoomID: newRoom.ID.String(),
-				UserID: senderID,
-				Role:   "member",
-			},
-			{
-				RoomID: newRoom.ID.String(),
-				UserID: receiverID,
-				Role:   "member",
-			},
-		}
+	// Create room
+	newRoom := &entity.Room{
+		ID:        uuid.New(),
+		RT:        "private",
+		CreatedBy: senderID,
+	}
 
-		if err := tx.Create(members).Error; err != nil {
-			tx.Rollback()
-			return nil, app_error.NewAppError(http.StatusInternalServerError, "Failed to add member to private room", "db-error")
-		}
+	if err := tx.Create(newRoom).Error; err != nil {
+		tx.Rollback()
+		return nil, app_error.NewAppError(http.StatusInternalServerError, "failed to create private room", "db-error")
+	}
 
-		if err := tx.Commit().Error; err != nil {
-			return nil, app_error.NewAppError(http.StatusInternalServerError, "unexpected error occur when commit create room private chat", "db-error")
-		}
+	// Create members
+	members := []entity.RoomMember{
+		{
+			RoomID: newRoom.ID.String(),
+			UserID: senderID,
+			Role:   "member",
+		},
+		{
+			RoomID: newRoom.ID.String(),
+			UserID: receiverID,
+			Role:   "member",
+		},
+	}
 
-		return newRoom, nil
+	if err := tx.Create(&members).Error; err != nil {
+		tx.Rollback()
+		return nil, app_error.NewAppError(http.StatusInternalServerError, "failed to add members to private room", "db-error")
 	}
 
 	if err := tx.Commit().Error; err != nil {
-		return nil, app_error.NewAppError(http.StatusInternalServerError, "already has private chat room", "tx")
+		return nil, app_error.NewAppError(http.StatusInternalServerError, "failed to commit room creation", "db-error")
 	}
 
-	return &room, nil
+	return newRoom, nil
 }
 
 func (r *ChatRepo) FindRoomByID(ctx context.Context, roomID string) (*entity.Room, *app_error.AppError) {
 	var room entity.Room
 	if err := r.AppState.DB.WithContext(ctx).Where("id = ?", roomID).First(&room).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.Error().Err(err).Msg("room is not found")
 			return nil, app_error.NewAppError(http.StatusNotFound, "room not found", "not-found")
 		}
+		log.Error().Err(err).Msgf("failed to fetch room: %v", err)
 		return nil, app_error.NewAppError(http.StatusInternalServerError, "failed to fetch room", "db-error")
 	}
 	return &room, nil

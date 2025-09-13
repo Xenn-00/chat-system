@@ -263,6 +263,7 @@ func (c *ChatService) UpdatePrivateMessage(ctx context.Context, req chat_dto.Upd
 	if err != nil {
 		return nil, err
 	}
+	log.Info().Msgf("room id: %s", originalMsg.RoomID)
 	// authorization check
 	if originalMsg.SenderID != senderID {
 		return nil, app_error.NewAppError(http.StatusForbidden, "You can only update your own message", "authorization")
@@ -277,12 +278,16 @@ func (c *ChatService) UpdatePrivateMessage(ctx context.Context, req chat_dto.Upd
 	}
 	// room & membership validation
 	room, err := c.ChatRepo.FindRoomByID(ctx, originalMsg.RoomID)
+	log.Info().Msgf("room deletedAt: %v", room.DeletedAt)
+	log.Info().Msgf("room err: %v", err)
 	if err != nil || room.DeletedAt != nil {
 		return nil, app_error.NewAppError(http.StatusNotFound, "Room not found or inactive", "room")
 	}
 	member, err := c.ChatRepo.FindRoomMembers(ctx, originalMsg.RoomID)
-	if err != nil || c.isUserMemberOfRoom(member, senderID) {
-		return nil, app_error.NewAppError(http.StatusForbidden, "you are not a member of this room", "forbidden")
+	log.Info().Msgf("is member: %v", c.isUserMemberOfRoom(member, senderID))
+	if err != nil || !c.isUserMemberOfRoom(member, senderID) {
+		log.Error().Err(err).Msgf("an error occur: %v", err)
+		return nil, app_error.NewAppError(http.StatusForbidden, fmt.Sprintf("%s, you are not a member of this room", senderID), "forbidden")
 	}
 	// Content validation (no empty, different from original)
 	if strings.TrimSpace(req.Content) == strings.TrimSpace(originalMsg.Content) {
@@ -361,6 +366,7 @@ func (c *ChatService) UpdatePrivateMessage(ctx context.Context, req chat_dto.Upd
 
 func (c *ChatService) isUserMemberOfRoom(members []*entity.RoomMember, userID string) bool {
 	for _, member := range members {
+		log.Info().Msgf("member_id: %v", member.UserID)
 		if member.UserID == userID {
 			return member.LeftAt == nil
 		}

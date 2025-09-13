@@ -1,20 +1,19 @@
-package handlers
+package chat_handler
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
-	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-playground/validator/v10"
-	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
 	"github.com/xenn00/chat-system/internal/dtos/chat_dto"
 	app_error "github.com/xenn00/chat-system/internal/errors"
+	"github.com/xenn00/chat-system/internal/handlers"
 	"github.com/xenn00/chat-system/internal/middleware"
 	"github.com/xenn00/chat-system/internal/queue"
 	chat_service "github.com/xenn00/chat-system/internal/use-case/chat-case"
-	"github.com/xenn00/chat-system/internal/utils/types"
 	"github.com/xenn00/chat-system/state"
 )
 
@@ -66,33 +65,12 @@ func (h *ChatHandler) SendPrivateMessage(w http.ResponseWriter, r *http.Request)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(CreateResponse("message sent successfully", *resp, reqID))
+	json.NewEncoder(w).Encode(handlers.CreateResponse("message sent successfully", *resp, reqID))
 
 	// notif / ws broadcast
 	go func() {
-		jobPayload := &types.BroadcastMessagePayload{
-			MessageID:  resp.MessageID,
-			RoomID:     resp.RoomID,
-			SenderID:   resp.SenderID,
-			ReceiverID: resp.ReceiverID,
-			Content:    resp.Content,
-
-			CreatedAt: resp.CreatedAt,
-		}
-
-		job := queue.Job{
-			ID:        uuid.New().String(),
-			Type:      "broadcast_private_message",
-			Payload:   queue.MustMarshal(jobPayload),
-			Priority:  1,
-			Retry:     0,
-			MaxRetry:  3,
-			CreatedAt: time.Now().Unix(),
-			ExpireAt:  time.Now().Add(1 * time.Minute).Unix(),
-		}
-
-		if err := h.Producer.Enqueue(h.State.Ctx, job); err != nil {
-			log.Error().Err(err).Msg("Failed to enqueue job")
+		if err := h.broadcastPrivateMessage(resp); err != nil {
+			log.Error().Err(err).Msg("failed to broadcast message")
 		}
 	}()
 
@@ -125,7 +103,7 @@ func (h *ChatHandler) GetPrivateMessages(w http.ResponseWriter, r *http.Request)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(CreateResponse("messages fetch successfully", *resp, reqID))
+	json.NewEncoder(w).Encode(handlers.CreateResponse("messages fetch successfully", *resp, reqID))
 
 	return nil
 
@@ -163,38 +141,12 @@ func (h *ChatHandler) ReplyPrivateMessage(w http.ResponseWriter, r *http.Request
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(CreateResponse("message replied successfully", *resp, reqID))
+	json.NewEncoder(w).Encode(handlers.CreateResponse("message replied successfully", *resp, reqID))
 
 	// notif / ws broadcast
 	go func() {
-		jobPayload := &types.BroadcastMessagePayload{
-			MessageID:  resp.MessageID,
-			RoomID:     resp.RoomID,
-			SenderID:   resp.SenderID,
-			ReceiverID: resp.ReceiverID,
-			Content:    resp.Content,
-			IsRead:     &resp.IsRead,
-			ReplyTo: &types.ReplyTo{
-				MessageID: resp.ReplyTo.RepliedMessageID,
-				Content:   resp.ReplyTo.Content,
-				SenderID:  resp.ReplyTo.SenderID,
-			},
-			CreatedAt: resp.CreatedAt,
-		}
-
-		job := queue.Job{
-			ID:        uuid.New().String(),
-			Type:      "broadcast_private_message_reply",
-			Payload:   queue.MustMarshal(jobPayload),
-			Priority:  1,
-			Retry:     0,
-			MaxRetry:  3,
-			CreatedAt: time.Now().Unix(),
-			ExpireAt:  time.Now().Add(1 * time.Minute).Unix(),
-		}
-
-		if err := h.Producer.Enqueue(h.State.Ctx, job); err != nil {
-			log.Error().Err(err).Msg("Failed to enqueue job")
+		if err := h.broadcastPrivateMessageReply(resp); err != nil {
+			log.Error().Err(err).Msg("failed to broadcast message reply")
 		}
 	}()
 
@@ -226,7 +178,7 @@ func (h *ChatHandler) MarkMessageAsRead(w http.ResponseWriter, r *http.Request) 
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(CreateResponse("message marked as read successfully", "OK", reqID))
+	json.NewEncoder(w).Encode(handlers.CreateResponse("message marked as read successfully", "OK", reqID))
 
 	return nil
 }
@@ -268,36 +220,10 @@ func (h *ChatHandler) UpdatePrivateMessage(w http.ResponseWriter, r *http.Reques
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(CreateResponse("message edited", *resp, reqID))
+	json.NewEncoder(w).Encode(handlers.CreateResponse("message edited", *resp, reqID))
 
 	// notif / ws broadcast
-	go func() {
-		jobPayload := &types.BroadcastMessagePayload{
-			MessageID:  resp.MessageID,
-			RoomID:     resp.RoomID,
-			SenderID:   resp.SenderID,
-			ReceiverID: resp.ReceiverID,
-			Content:    resp.Content,
-			IsRead:     &resp.IsRead,
-			IsEdited:   &resp.IsEdited,
-			UpdatedAt:  &resp.UpdatedAt,
-		}
-
-		job := queue.Job{
-			ID:        uuid.New().String(),
-			Type:      "broadcast_private_message_updated",
-			Payload:   queue.MustMarshal(jobPayload),
-			Priority:  2,
-			Retry:     0,
-			MaxRetry:  3,
-			CreatedAt: time.Now().Unix(),
-			ExpireAt:  time.Now().Add(1 * time.Minute).Unix(),
-		}
-
-		if err := h.Producer.Enqueue(h.State.Ctx, job); err != nil {
-			log.Error().Err(err).Msg("Failed to enqueue job")
-		}
-	}()
+	go h.broadcastPrivateMessageUpdated(resp)
 
 	return nil
 }
