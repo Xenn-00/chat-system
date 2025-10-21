@@ -115,8 +115,16 @@ func (c *Client) writePump() {
 			for range n {
 				select {
 				case msg := <-c.Send:
-					w.Write([]byte("\n"))
-					w.Write(msg)
+					if _, err := w.Write([]byte("\n")); err != nil {
+						log.Error().Err(err).Msg("failed to write separator")
+						w.Close()
+						return
+					}
+					if _, err := w.Write(msg); err != nil {
+						log.Error().Err(err).Msg("failed to write batched message")
+						w.Close()
+						return
+					}
 				default:
 					break batchLoop
 				}

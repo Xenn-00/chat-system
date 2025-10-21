@@ -16,7 +16,8 @@ type AppConfig struct {
 
 	DATABASE struct {
 		Postgres struct {
-			DSN string `mapstructure:"URL"`
+			DSN  string `mapstructure:"URL"`
+			TEST string `mapstructure:"TEST"`
 		}
 		Redis struct {
 			Addr     string `mapstructure:"ADDR"`

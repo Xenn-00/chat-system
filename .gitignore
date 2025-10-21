@@ -5,3 +5,4 @@ application.yaml
 *.log
 *.pem
 note.txt
+*.out

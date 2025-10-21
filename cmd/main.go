@@ -44,7 +44,7 @@ func main() {
 	}
 
 	wsHub := websocket.NewHub()
-	workerPool := worker.NewWorkerPool(state.Redis, 5, wsHub)
+	workerPool := worker.NewWorkerPool(state.Redis, 5, wsHub, state)
 
 	go workerPool.Start(ctx)
 

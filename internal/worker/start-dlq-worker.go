@@ -54,7 +54,7 @@ func (wp *WorkerPool) StartDLQWorker(ctx context.Context) {
 				ExpireAt:           time.Now().Add(7 * 24 * time.Hour).UTC(), // TTl 7 days
 			}
 
-			collection := wp.Mongo.Database(wp.DLQConfig.DatabaseName).Collection(wp.DLQConfig.CollectionName)
+			collection := wp.AppState.Mongo.Database(wp.DLQConfig.DatabaseName).Collection(wp.DLQConfig.CollectionName)
 			if _, err := collection.InsertOne(ctx, dlqDoc); err != nil {
 				log.Error().Err(err).Msg("Failed to persist DLQ job to MongoDB")
 
@@ -68,7 +68,7 @@ func (wp *WorkerPool) StartDLQWorker(ctx context.Context) {
 }
 
 func (wp *WorkerPool) GetDLQStats(ctx context.Context) (map[string]int64, error) {
-	collection := wp.Mongo.Database(wp.DLQConfig.DatabaseName).Collection(wp.DLQConfig.CollectionName)
+	collection := wp.AppState.Mongo.Database(wp.DLQConfig.DatabaseName).Collection(wp.DLQConfig.CollectionName)
 
 	pipeline := bson.A{
 		bson.M{"$group": bson.M{

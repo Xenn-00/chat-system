@@ -11,7 +11,7 @@ import (
 	"github.com/xenn00/chat-system/internal/queue"
 	"github.com/xenn00/chat-system/internal/utils/types"
 	"github.com/xenn00/chat-system/internal/websocket"
-	"go.mongodb.org/mongo-driver/v2/mongo"
+	"github.com/xenn00/chat-system/state"
 )
 
 // Lua script for atomic pop from priority queue
@@ -28,7 +28,7 @@ end
 
 type WorkerPool struct {
 	Redis      *redis.Client
-	Mongo      *mongo.Client
+	AppState   *state.AppState
 	WorkerNum  int
 	JobChannel chan string
 	wg         sync.WaitGroup
@@ -41,10 +41,11 @@ type WorkerPool struct {
 	atomicPop *redis.Script
 }
 
-func NewWorkerPool(redisClient *redis.Client, workerNum int, ws *websocket.Hub) *WorkerPool {
+func NewWorkerPool(redisClient *redis.Client, workerNum int, ws *websocket.Hub, appState *state.AppState) *WorkerPool {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &WorkerPool{
 		Redis:      redisClient,
+		AppState:   appState,
 		WorkerNum:  workerNum,
 		JobChannel: make(chan string, 100), // Buffered channel to hold jobs
 		ws:         ws,

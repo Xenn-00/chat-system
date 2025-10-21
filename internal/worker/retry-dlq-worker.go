@@ -34,7 +34,17 @@ func (wp *WorkerPool) StartDLQRetryConsumer(ctx context.Context) {
 }
 
 func (wp *WorkerPool) processDLQJobs(ctx context.Context) {
-	collection := wp.Mongo.Database(wp.DLQConfig.DatabaseName).Collection(wp.DLQConfig.CollectionName)
+	if wp.AppState.Mongo == nil {
+		log.Error().Msg("MongoDB client is nil")
+		return
+	}
+
+	if err := wp.AppState.Mongo.Ping(ctx, nil); err != nil {
+		log.Error().Err(err).Msg("MongoDB connection lost")
+		return
+	}
+
+	collection := wp.AppState.Mongo.Database(wp.DLQConfig.DatabaseName).Collection(wp.DLQConfig.CollectionName)
 
 	// find jobs ready for retry
 	filter := bson.M{
