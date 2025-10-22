@@ -36,17 +36,30 @@ func main() {
 	}
 	defer state.Close()
 
-	r := routers.NewRouter(state)
+	wsHub := websocket.NewHub()
+	log.Info().Msg("Websocket hub initialized")
+
+	authFunc := createAuthenticator()
+
+	wsHandler := websocket.NewWebSocketHandler(wsHub, authFunc)
+	wsHandler.MaxConnections = 10000
+	wsHandler.RateLimit.ConnectionsPerIP = 20
+	go wsHandler.StartCleanup(ctx)
+
+	log.Info().Msg("Websocket handler initialized")
+
+	r := routers.NewRouter(state, wsHub, wsHandler)
+
+	workerPool := worker.NewWorkerPool(state.Redis, 5, wsHub, state)
+	go workerPool.Start(ctx)
 
 	server := &http.Server{
-		Addr:    config.Conf.App.Port,
-		Handler: r,
+		Addr:         config.Conf.App.Port,
+		Handler:      r,
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 15 * time.Second,
+		// IdleTimeout:  60 * time.Second,
 	}
-
-	wsHub := websocket.NewHub()
-	workerPool := worker.NewWorkerPool(state.Redis, 5, wsHub, state)
-
-	go workerPool.Start(ctx)
 
 	// serve the application
 	go func() {
@@ -68,4 +81,15 @@ func main() {
 		fmt.Println("Server exited gracefully.")
 	}
 	workerPool.Stop()
+}
+
+// just being lazy right now 😂😂
+func createAuthenticator() websocket.AuthenticatorFunc {
+	return func(r *http.Request) (string, error) {
+		userID := r.URL.Query().Get("user_id")
+		if userID == "" {
+			return "", &websocket.AuthError{Message: "user_id required"}
+		}
+		return userID, nil
+	}
 }

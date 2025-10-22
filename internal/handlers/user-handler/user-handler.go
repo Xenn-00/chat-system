@@ -1,6 +1,7 @@
-package handlers
+package user_handler
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
@@ -11,6 +12,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/xenn00/chat-system/internal/dtos/user_dto"
 	app_error "github.com/xenn00/chat-system/internal/errors"
+	"github.com/xenn00/chat-system/internal/handlers"
 	"github.com/xenn00/chat-system/internal/middleware"
 	"github.com/xenn00/chat-system/internal/queue"
 	user_service "github.com/xenn00/chat-system/internal/use-case/user-case"
@@ -58,7 +60,7 @@ func (h *UserHandler) CreateUser(w http.ResponseWriter, r *http.Request) *app_er
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(CreateResponse("user registered successfully", *resp, reqID))
+	json.NewEncoder(w).Encode(handlers.CreateResponse("user registered successfully", *resp, reqID))
 
 	go func() {
 		reqJob := map[string]any{
@@ -132,7 +134,7 @@ func (h *UserHandler) VerifyUser(w http.ResponseWriter, r *http.Request) *app_er
 	})
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(CreateResponse("user registered successfully", *resp, reqID))
+	json.NewEncoder(w).Encode(handlers.CreateResponse("user registered successfully", *resp, reqID))
 
 	return nil
 }
@@ -180,7 +182,7 @@ func (h *UserHandler) LoginUser(w http.ResponseWriter, r *http.Request) *app_err
 	})
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(CreateResponse("user registered successfully", *resp, reqID))
+	json.NewEncoder(w).Encode(handlers.CreateResponse("user registered successfully", *resp, reqID))
 
 	return nil
 }
