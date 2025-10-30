@@ -48,7 +48,7 @@ func NewHub() *Hub {
 		stats: HubStats{
 			LastReset: time.Now(),
 		},
-		cleanupTicker: time.NewTicker(5 * time.Minute),
+		cleanupTicker: time.NewTicker(1 * time.Minute),
 	}
 
 	// Start cleanup routine

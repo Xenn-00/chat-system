@@ -39,7 +39,7 @@ func main() {
 	wsHub := websocket.NewHub()
 	log.Info().Msg("Websocket hub initialized")
 
-	authFunc := createAuthenticator()
+	authFunc := websocket.JWTWebSocketAuth(state.JwtSecret.Private, state.JwtSecret.Public, state.Redis)
 
 	wsHandler := websocket.NewWebSocketHandler(wsHub, authFunc)
 	wsHandler.MaxConnections = 10000
@@ -81,15 +81,4 @@ func main() {
 		fmt.Println("Server exited gracefully.")
 	}
 	workerPool.Stop()
-}
-
-// just being lazy right now 😂😂
-func createAuthenticator() websocket.AuthenticatorFunc {
-	return func(r *http.Request) (string, error) {
-		userID := r.URL.Query().Get("user_id")
-		if userID == "" {
-			return "", &websocket.AuthError{Message: "user_id required"}
-		}
-		return userID, nil
-	}
 }

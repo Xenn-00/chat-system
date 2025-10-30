@@ -54,7 +54,7 @@ func NewWorkerPool(redisClient *redis.Client, workerNum int, ws *websocket.Hub, 
 		atomicPop:  redis.NewScript(atomicPopScript),
 		DLQConfig: types.DLQRetryConfig{
 			BatchSize:      10,
-			RetryInterval:  5 * time.Minute,
+			RetryInterval:  1 * time.Minute,
 			MaxRetryCount:  3,
 			BackoffFactor:  2.0,
 			DatabaseName:   "chat_collection",
